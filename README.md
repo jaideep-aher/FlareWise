@@ -34,6 +34,37 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+## Railway Deployment
+
+This app is ready for Railway through `railway.json`. Railway should build with:
+
+```bash
+npm ci && npm run build
+```
+
+It should start with:
+
+```bash
+npm run start
+```
+
+Required Railway variables:
+
+```bash
+GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+Deploy from this folder after logging in to Railway:
+
+```bash
+railway login
+railway link
+railway up --detach
+```
+
+The app uses the `PORT` value provided by Railway. The local classifier is bundled in `src/lib/ml/model.json`, so this version does not need a separate model server.
+
 ## Local NLP Model
 
 The checked-in local model is trained from the public `gretelai/symptom_to_diagnosis` dataset from Hugging Face, plus synthetic intake-style examples for meta notes and multi-symptom notes. The script trains a TF-IDF multinomial logistic regression model in JavaScript and writes the artifact to `src/lib/ml/model.json`.
