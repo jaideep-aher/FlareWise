@@ -1,4 +1,3 @@
-import { env, pipeline } from "@huggingface/transformers";
 import type { TransformerResult } from "@/lib/types";
 
 // Neural opinion in the Mira pipeline: a DistilBERT transformer FINE-TUNED
@@ -14,22 +13,25 @@ const MODEL_ID = "jaydeep123423/mira-symptom-domain";
 const FINETUNE_ACCURACY = 0.995; // held-out test accuracy from the Colab run
 const FINETUNE_MACRO_F1 = 0.994;
 
-// Pull the model from the Hugging Face Hub on first use and cache it on disk.
-// The quantized weights are ~64MB, so the first request downloads once and
-// later requests are served from cache.
-env.allowRemoteModels = true;
-env.allowLocalModels = false;
-
 type ClsOutput = Array<{ label: string; score: number }>;
 type Classifier = (text: string, options?: Record<string, unknown>) => Promise<ClsOutput>;
 
 let classifierPromise: Promise<Classifier> | null = null;
 
+// The transformer library (and its native ONNX runtime) is imported lazily so a
+// load failure in production degrades gracefully instead of taking down the
+// whole analyze route at module-evaluation time. The Hub model (~64MB quantized)
+// is pulled on first use and cached on disk for later requests.
 function getClassifier(): Promise<Classifier> {
   if (!classifierPromise) {
-    classifierPromise = pipeline("text-classification", MODEL_ID, {
-      dtype: "q8"
-    }) as unknown as Promise<Classifier>;
+    classifierPromise = (async () => {
+      const { env, pipeline } = await import("@huggingface/transformers");
+      env.allowRemoteModels = true;
+      env.allowLocalModels = false;
+      return pipeline("text-classification", MODEL_ID, {
+        dtype: "q8"
+      }) as unknown as Classifier;
+    })();
   }
   return classifierPromise;
 }
