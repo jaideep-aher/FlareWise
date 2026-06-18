@@ -76,13 +76,15 @@ export function LandingPage() {
         <div className="fade-up max-w-3xl">
           <p className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--accent-strong)] shadow-sm">
             <Sparkles size={14} />
-            Smart pre-visit intake
+            Your health companion
           </p>
           <h1 className="mt-5 text-5xl font-semibold leading-[1.05] tracking-tight text-[var(--foreground)] sm:text-6xl">
-            Help doctors see the patient story before the visit begins.
+            Give clinicians their time back, before the visit begins.
           </h1>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-[var(--ink-soft)]">
-            Answer one question at a time. FlareWise turns your responses into a clean pre-visit brief - what changed, what hurts, what was tried, and what needs attention.
+            Clinicians are stretched thin and patients wait months to be seen. Mira automates the
+            repetitive pre-visit prep - turning a patient&apos;s answers into a clean, triaged brief so
+            the visit starts further ahead.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Link
@@ -93,10 +95,10 @@ export function LandingPage() {
               <ArrowRight size={18} />
             </Link>
             <Link
-              href="/method"
+              href="/why"
               className="inline-flex h-12 items-center justify-center rounded-xl border border-[var(--line)] bg-white px-6 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--accent)] hover:shadow-sm"
             >
-              View Method
+              Why Mira
             </Link>
           </div>
         </div>
@@ -155,11 +157,13 @@ export function LandingPage() {
       <section className="border-t border-[var(--line)] py-10">
         <div className="mb-5 flex flex-col justify-between gap-3 lg:flex-row lg:items-end">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-[var(--accent-strong)]">Juno-style roadmap</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-normal">What this grows into after the hackathon.</h2>
+            <p className="text-sm font-semibold uppercase tracking-wide text-[var(--accent-strong)]">Where this is headed</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-normal">A companion across the whole care journey.</h2>
           </div>
           <p className="max-w-2xl text-sm leading-6 text-[var(--ink-soft)]">
-            Public Juno materials emphasize natural conversations, continuous tracking, pattern detection, longitudinal health profiles, biometrics, and appointment-ready reports. These are planned directions for FlareWise, not current features.
+            Natural conversations, continuous tracking, pattern detection, longitudinal health
+            profiles, biometrics, and appointment-ready reports. These are planned directions for
+            Mira, not current features.
           </p>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

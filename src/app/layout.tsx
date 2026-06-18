@@ -14,8 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FlareWise",
-  description: "Reliability evaluation for chronic illness note understanding",
+  title: "Mira · Your health companion",
+  description:
+    "Mira is a calm health companion that turns your answers into a clear, triaged brief for your doctor, before and after every visit.",
 };
 
 export default function RootLayout({

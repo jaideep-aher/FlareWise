@@ -1,75 +1,67 @@
-import type { AgreementReport, LocalModelResult, TriageScore } from "@/lib/types";
+import type {
+  AgreementReport,
+  LocalModelResult,
+  MethodOpinion,
+  TransformerResult
+} from "@/lib/types";
 
-// Compares two independent opinions about how urgent the visit is:
-//   1. the rule-based triage verdict (deterministic safety net), and
-//   2. the trained local classifier's appointment-priority head (statistics).
+// Compares the two TRAINED models on the symptom-area (domain) task:
+//   1. the from-scratch TF-IDF + logistic regression classifier (classical ML), and
+//   2. a fine-tuned DistilBERT transformer (neural).
 //
-// When they disagree we surface it rather than hide it. A model that misses an
-// urgency the rules caught is exactly the kind of limitation the evaluation is
-// meant to expose, and the rules always win on the final call.
+// Both were trained on the same 7-domain task, so this is a genuine head-to-head.
+// When they disagree we surface it - a split between a classical and a neural
+// model on the same input is exactly the kind of limitation the evaluation is
+// meant to expose, and it tells the reader to treat that note's domain with care.
 
-function ruleRank(level: TriageScore["level"]): number {
-  switch (level) {
-    case "Emergency":
-      return 4;
-    case "Priority":
-      return 3;
-    case "Soon":
-      return 2;
-    default:
-      return 1;
-  }
+const NON_COMMITTAL = new Set([
+  "mixed signal",
+  "insufficient signal",
+  "no clear domain"
+]);
+
+function normalize(label: string): string {
+  return label.trim().toLowerCase();
 }
 
-function modelRank(priority: string): number {
-  const p = priority.toLowerCase();
-  if (p.includes("priority") || p.includes("urgent") || p.includes("emergency")) return 3;
-  if (p.includes("clinician") || p.includes("discussion") || p.includes("soon")) return 2;
-  if (p.includes("routine") || p.includes("self") || p.includes("monitor")) return 1;
-  return 0; // mixed / insufficient / unknown
-}
+export function compareDomains(
+  localModel: LocalModelResult,
+  transformer: TransformerResult | null
+): AgreementReport | null {
+  if (!transformer) return null;
 
-export function compareOpinions(
-  triage: TriageScore,
-  localModel: LocalModelResult
-): AgreementReport {
-  const ruleVerdict = triage.level;
-  const modelVerdict = localModel.priority;
-  const rRank = ruleRank(ruleVerdict);
-  const mRank = modelRank(modelVerdict);
+  const classicalDomain = localModel.topDomain;
+  const neuralDomain = transformer.topDomain;
 
-  // The model couldn't form a usable priority opinion.
-  if (mRank === 0) {
+  const opinions: MethodOpinion[] = [
+    {
+      method: "TF-IDF + logistic regression",
+      kind: "classical",
+      verdict: classicalDomain,
+      detail: `Confidence ${Math.round(localModel.confidence * 100)}%`
+    },
+    {
+      method: "DistilBERT (fine-tuned)",
+      kind: "transformer",
+      verdict: neuralDomain,
+      detail: `Confidence ${Math.round(transformer.domainConfidence * 100)}%`
+    }
+  ];
+
+  // If the classical model is non-committal (meta-only or mixed note), an
+  // agree/disagree verdict isn't meaningful.
+  if (NON_COMMITTAL.has(normalize(classicalDomain))) {
     return {
-      ruleVerdict,
-      modelVerdict,
-      modelConfidence: localModel.priorityConfidence,
-      agree: false,
-      note: `The local model did not produce a usable priority signal (${modelVerdict}), so the rule-based triage of "${ruleVerdict}" stands on its own.`
+      opinions,
+      agree: true,
+      note: `The classical model did not commit to a single domain (${classicalDomain}), so there is nothing firm to compare against. The fine-tuned model leaned toward ${neuralDomain}.`
     };
   }
 
-  const gap = Math.abs(rRank - mRank);
-  const agree = gap <= 1;
+  const agree = normalize(classicalDomain) === normalize(neuralDomain);
+  const note = agree
+    ? `Both trained models independently classified the symptom area as ${classicalDomain}, which raises confidence in that read.`
+    : `The classical model read this as ${classicalDomain} while the fine-tuned transformer read it as ${neuralDomain}. A split between the two models means this note's domain is ambiguous and worth a human glance.`;
 
-  let note: string;
-  if (agree) {
-    note = `Both the rule-based triage and the trained model point to a similar urgency, which raises confidence in the "${ruleVerdict}" call.`;
-  } else if (rRank > mRank) {
-    note = `The rules escalated to "${ruleVerdict}" while the model leaned toward "${modelVerdict}" (${Math.round(
-      localModel.priorityConfidence * 100
-    )}%). The rules win on safety, but this gap is worth a human glance.`;
-  } else {
-    note = `The model suggested a higher urgency ("${modelVerdict}", ${Math.round(
-      localModel.priorityConfidence * 100
-    )}%) than the rules ("${ruleVerdict}"). The note may contain wording the keyword rules did not catch.`;
-  }
-
-  return {
-    ruleVerdict,
-    modelVerdict,
-    modelConfidence: localModel.priorityConfidence,
-    agree,
-    note
-  };
+  return { opinions, agree, note };
 }

@@ -17,6 +17,7 @@ import type { AnalysisResult, Demographics, LocalModelResult } from "@/lib/types
 const storageKey = "flarewise.latestAnalysis";
 const notesKey = "flarewise.notes";
 const answersKey = "flarewise.intakeAnswers";
+const queueKey = "flarewise.intakeQueue";
 const stepKey = "flarewise.intakeStep";
 const demographicsKey = "flarewise.demographics";
 
@@ -29,38 +30,144 @@ const emptyDemographics: Demographics = {
   currentMedications: ""
 };
 
-const intakeQuestions = [
+type IntakeQuestion = {
+  id: string;
+  short: string;
+  question: string;
+  placeholder: string;
+};
+
+// Core questions everyone answers, in order.
+const BASE_QUESTIONS: IntakeQuestion[] = [
   {
+    id: "main_concern",
     short: "Main concern",
-    question: "What is the main problem you want the doctor to address first?",
+    question: "What is the main problem you want the doctor to focus on first?",
     placeholder: "e.g. Persistent dizziness and headaches that make it hard to focus at work"
   },
   {
+    id: "timeline",
     short: "Timeline",
-    question: "When did it start, and has it gotten better, worse, or changed?",
+    question: "When did it start, and has it been getting better, worse, or staying the same?",
     placeholder: "e.g. Started about 5 days ago. Worse in the mornings, slightly better after resting"
   },
   {
+    id: "severity",
     short: "Location & severity",
-    question: "Where is the pain or symptom, and how severe is it from 0 to 10?",
+    question: "Where do you feel it, and how bad is it on a scale of 0 to 10?",
     placeholder: "e.g. Front of head and behind the eyes. Pain is about 6/10 most days"
   },
   {
-    short: "Triggers",
-    question: "What seems to trigger it or make it better?",
-    placeholder: "e.g. Worse after hot showers and stress. Better with sleep and ibuprofen"
+    id: "pattern",
+    short: "Pattern & triggers",
+    question: "Is it constant or does it come and go? Anything that makes it better or worse?",
+    placeholder: "e.g. Comes in waves. Worse after hot showers and stress, better with sleep"
   },
   {
+    id: "associated",
+    short: "Other symptoms",
+    question: "Are there any other symptoms alongside it, for example fever, nausea, dizziness, or a rash?",
+    placeholder: "e.g. Some nausea in the mornings and feeling more tired than usual"
+  },
+  {
+    id: "tried",
     short: "What you tried",
-    question: "What medications, treatments, or home steps have you tried?",
-    placeholder: "e.g. Ibuprofen 400mg twice daily for 3 days. Rest and extra water"
+    question: "What have you already tried (medications, doses, or home steps), and did it help?",
+    placeholder: "e.g. Ibuprofen 400mg twice daily for 3 days and extra water. Little relief"
   },
   {
-    short: "Last visit",
-    question: "What did the doctor say last time, and what changed after that visit?",
-    placeholder: "e.g. Last visit changed blood pressure meds. Still feel dizzy most mornings"
+    id: "impact_goal",
+    short: "Impact & goal",
+    question: "How is this affecting your daily life, and what would you most like from this visit?",
+    placeholder: "e.g. Hard to concentrate at work. I want to know what's causing it and how to stop it"
   }
 ];
+
+// Follow-up questions that only appear when an answer mentions something relevant.
+const FOLLOWUPS = {
+  cardio: {
+    id: "fu_cardio",
+    short: "Heart & breathing",
+    question:
+      "You mentioned your chest or breathing. Do you have chest pain, shortness of breath, or a racing heart right now, and since when?",
+    placeholder: "e.g. Tight chest and short of breath when I climb stairs, started this morning"
+  },
+  neuro: {
+    id: "fu_neuro",
+    short: "Neurological",
+    question:
+      "Any vision changes, numbness, weakness on one side, or trouble speaking along with this?",
+    placeholder: "e.g. Vision goes blurry for a few minutes, no weakness or speech trouble"
+  },
+  fever: {
+    id: "fu_fever",
+    short: "Fever details",
+    question: "How high has your temperature gotten, and do you have chills, sweats, or a rash?",
+    placeholder: "e.g. Up to 38.5°C, chills at night, no rash"
+  },
+  gi: {
+    id: "fu_gi",
+    short: "Digestive",
+    question: "Any changes in appetite, bowel movements, or blood in your stool?",
+    placeholder: "e.g. Less appetite, looser stools for 3 days, no blood"
+  },
+  bleeding: {
+    id: "fu_bleeding",
+    short: "Bleeding",
+    question: "Where did you notice the blood (stool, urine, vomit, or coughing), and roughly how much?",
+    placeholder: "e.g. A small amount of bright red blood in the toilet, once"
+  },
+  meds: {
+    id: "fu_meds",
+    short: "Current medications",
+    question: "Which medications and doses are you taking regularly now, and have any changed recently?",
+    placeholder: "e.g. Atorvastatin 20mg daily; blood pressure med dose raised last month"
+  },
+  mental: {
+    id: "fu_mental",
+    short: "Mood & sleep",
+    question:
+      "How have your mood, stress, and sleep been lately? (It's okay to share, it helps the doctor.)",
+    placeholder: "e.g. Anxious most days, sleeping ~4 hours, feeling overwhelmed"
+  },
+  skin: {
+    id: "fu_skin",
+    short: "Skin details",
+    question:
+      "When did the skin change start, is it spreading, and did it follow a new product, food, or medication?",
+    placeholder: "e.g. Red itchy patches on both arms, started after a new detergent"
+  },
+  last_visit: {
+    id: "fu_last_visit",
+    short: "Since last visit",
+    question: "What did your doctor say last time, and what has changed since that visit?",
+    placeholder: "e.g. Last visit changed my BP meds. Still dizzy most mornings"
+  }
+} satisfies Record<string, IntakeQuestion>;
+
+const FOLLOWUP_RULES: Array<{ test: RegExp; question: IntakeQuestion }> = [
+  { test: /chest|short(ness)? of breath|can'?t breathe|breathing|palpitation|racing heart/i, question: FOLLOWUPS.cardio },
+  { test: /dizz|vision|blurr|numb|weak|migraine|headache|faint|slurred|speech|tingl/i, question: FOLLOWUPS.neuro },
+  { test: /fever|temperature|chills|sweats|night sweat/i, question: FOLLOWUPS.fever },
+  { test: /stomach|abdom|nausea|vomit|diarrh|constip|bowel|appetite|heartburn/i, question: FOLLOWUPS.gi },
+  { test: /blood|bleed/i, question: FOLLOWUPS.bleeding },
+  { test: /medication|medicine|\bmeds?\b|pill|dose|dosage|prescrib|tablet|inhaler|insulin/i, question: FOLLOWUPS.meds },
+  { test: /stress|anxiet|depress|\bmood\b|sleep|panic|overwhelm/i, question: FOLLOWUPS.mental },
+  { test: /rash|itch|hives|\bskin\b|spots|scaly|patches/i, question: FOLLOWUPS.skin },
+  { test: /last visit|last time|doctor said|prescrib|diagnos|previous|earlier appointment|changed my/i, question: FOLLOWUPS.last_visit }
+];
+
+// Decide which follow-ups a fresh answer unlocks (max 2 at a time, never duplicates).
+function deriveFollowUps(answerText: string, presentIds: Set<string>): IntakeQuestion[] {
+  const adds: IntakeQuestion[] = [];
+  for (const rule of FOLLOWUP_RULES) {
+    if (adds.length >= 2) break;
+    if (rule.test.test(answerText) && !presentIds.has(rule.question.id)) {
+      adds.push(rule.question);
+    }
+  }
+  return adds;
+}
 
 const loadingMessages = [
   "Reading your intake answers...",
@@ -72,14 +179,14 @@ const loadingMessages = [
   "Scoring reliability..."
 ];
 
-function buildNotes(answers: string[]) {
-  return intakeQuestions
-    .map((item, index) => `${item.question}\n${answers[index]?.trim() || "Not provided"}`)
+function buildNotes(queue: IntakeQuestion[], answers: Record<string, string>) {
+  return queue
+    .map((item) => `${item.question}\n${answers[item.id]?.trim() || "Not provided"}`)
     .join("\n\n");
 }
 
-function symptomText(answers: string[]) {
-  return answers
+function symptomText(answers: Record<string, string>) {
+  return Object.values(answers)
     .map((answer) => answer.trim())
     .filter(Boolean)
     .join(". ");
@@ -91,24 +198,25 @@ export function Workspace() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const classifySeq = useRef(0);
 
-  const [answers, setAnswers] = useState<string[]>(() =>
-    Array.from({ length: intakeQuestions.length }, () => "")
-  );
+  const [queue, setQueue] = useState<IntakeQuestion[]>(BASE_QUESTIONS);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [step, setStep] = useState(0);
   const [thinking, setThinking] = useState(false);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [signal, setSignal] = useState<LocalModelResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState(0);
   const [error, setError] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [demographics, setDemographics] = useState<Demographics>(emptyDemographics);
+  const [analysisReady, setAnalysisReady] = useState(false);
+  const [demoTouched, setDemoTouched] = useState(false);
 
-  const totalSteps = intakeQuestions.length;
+  const totalSteps = queue.length;
   const isReview = step >= totalSteps;
-  const answeredCount = answers.filter((answer) => answer.trim().length > 0).length;
+  const answeredCount = queue.filter((item) => (answers[item.id] ?? "").trim().length > 0).length;
   const progress = isReview ? 100 : (step / totalSteps) * 100;
-  const classifyLive = useCallback(async (nextAnswers: string[]) => {
+  const classifyLive = useCallback(async (nextAnswers: Record<string, string>) => {
     const text = symptomText(nextAnswers);
     if (text.length < 8) {
       setSignal(null);
@@ -131,14 +239,27 @@ export function Workspace() {
   
   useEffect(() => {
     const savedAnswers = window.localStorage.getItem(answersKey);
+    const savedQueue = window.localStorage.getItem(queueKey);
     const savedStep = window.localStorage.getItem(stepKey);
-    let restored = Array.from({ length: intakeQuestions.length }, () => "");
+    let restoredAnswers: Record<string, string> = {};
+    let restoredQueue = BASE_QUESTIONS;
+
+    if (savedQueue) {
+      try {
+        const parsed = JSON.parse(savedQueue) as IntakeQuestion[];
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((q) => q?.id && q?.question)) {
+          restoredQueue = parsed;
+          setQueue(parsed);
+        }
+      } catch {
+      }
+    }
 
     if (savedAnswers) {
       try {
-        const parsed = JSON.parse(savedAnswers) as string[];
-        if (Array.isArray(parsed) && parsed.length === intakeQuestions.length) {
-          restored = parsed;
+        const parsed = JSON.parse(savedAnswers) as Record<string, string>;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          restoredAnswers = parsed;
           setAnswers(parsed);
         }
       } catch {
@@ -147,7 +268,7 @@ export function Workspace() {
 
     if (savedStep) {
       const value = Number(savedStep);
-      if (!Number.isNaN(value) && value >= 0 && value <= intakeQuestions.length) {
+      if (!Number.isNaN(value) && value >= 0 && value <= restoredQueue.length) {
         setStep(value);
       }
     }
@@ -162,15 +283,16 @@ export function Workspace() {
     }
 
     setHydrated(true);
-    classifyLive(restored);
+    classifyLive(restoredAnswers);
   }, [classifyLive]);
   
 
   useEffect(() => {
     if (!hydrated) return;
     window.localStorage.setItem(answersKey, JSON.stringify(answers));
+    window.localStorage.setItem(queueKey, JSON.stringify(queue));
     window.localStorage.setItem(stepKey, String(step));
-  }, [answers, step, hydrated]);
+  }, [answers, queue, step, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -178,13 +300,23 @@ export function Workspace() {
   }, [demographics, hydrated]);
 
   function updateDemographic<K extends keyof Demographics>(field: K, value: Demographics[K]) {
+    setDemoTouched(true);
     setDemographics((previous) => ({ ...previous, [field]: value }));
   }
 
+  // Once the brief is ready, only auto-advance if the patient hasn't started
+  // filling in the demographics form. If they have, wait for an explicit click
+  // so the fields they are typing into never vanish mid-entry.
   useEffect(() => {
-    if (!hydrated || isReview || thinking || editingIndex !== null) return;
+    if (!analysisReady || demoTouched) return;
+    const id = window.setTimeout(() => router.push("/results"), 900);
+    return () => window.clearTimeout(id);
+  }, [analysisReady, demoTouched, router]);
+
+  useEffect(() => {
+    if (!hydrated || isReview || thinking || editingId !== null) return;
     composerRef.current?.focus();
-  }, [step, hydrated, isReview, thinking, editingIndex]);
+  }, [step, hydrated, isReview, thinking, editingId]);
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [step, thinking, isReview]);
@@ -197,32 +329,39 @@ export function Workspace() {
     return () => window.clearInterval(id);
   }, [loading]);
 
-  function updateAnswer(index: number, value: string) {
-    setAnswers((previous) => {
-      const next = [...previous];
-      next[index] = value;
-      return next;
-    });
+  function updateAnswer(id: string, value: string) {
+    setAnswers((previous) => ({ ...previous, [id]: value }));
   }
 
   function submitCurrent() {
     if (isReview) return;
-    const current = answers[step]?.trim() ?? "";
-    const nextAnswers = [...answers];
-    nextAnswers[step] = current;
+    const current = queue[step];
+    const value = (answers[current.id] ?? "").trim();
+    const nextAnswers = { ...answers, [current.id]: value };
 
     setAnswers(nextAnswers);
     setError("");
     classifyLive(nextAnswers);
+
+    // Adaptive branching: an answer can unlock relevant follow-up questions,
+    // inserted right after the current one.
+    const presentIds = new Set(queue.map((item) => item.id));
+    const followUps = value ? deriveFollowUps(value, presentIds) : [];
+    const nextQueue = followUps.length
+      ? [...queue.slice(0, step + 1), ...followUps, ...queue.slice(step + 1)]
+      : queue;
+    if (followUps.length) setQueue(nextQueue);
+
     setThinking(true);
     window.setTimeout(() => {
       setThinking(false);
-      setStep((value) => Math.min(value + 1, totalSteps));
+      setStep((value) => Math.min(value + 1, nextQueue.length));
     }, 650);
   }
 
   async function analyze() {
-    const notes = buildNotes(answers);
+    const notes = buildNotes(queue, answers);
+    const answersText = symptomText(answers);
     setLoadingMsg(0);
     setLoading(true);
     setError("");
@@ -231,7 +370,7 @@ export function Workspace() {
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes })
+        body: JSON.stringify({ notes, answersText })
       });
       const payload = await response.json();
 
@@ -241,24 +380,34 @@ export function Workspace() {
 
       window.localStorage.setItem(storageKey, JSON.stringify(payload as AnalysisResult));
       window.localStorage.setItem(notesKey, notes);
-      router.push("/results");
+      // Don't yank the demographics form away - mark ready and let the overlay
+      // either auto-advance (if untouched) or wait for the patient to continue.
+      setAnalysisReady(true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Analysis failed");
       setLoading(false);
     }
   }
 
+  function viewResults() {
+    router.push("/results");
+  }
+
   function clearAll() {
-    setAnswers(Array.from({ length: intakeQuestions.length }, () => ""));
+    setQueue(BASE_QUESTIONS);
+    setAnswers({});
     setStep(0);
     setThinking(false);
-    setEditingIndex(null);
+    setEditingId(null);
     setSignal(null);
     setDemographics(emptyDemographics);
+    setAnalysisReady(false);
+    setDemoTouched(false);
     setError("");
     window.localStorage.removeItem(storageKey);
     window.localStorage.removeItem(notesKey);
     window.localStorage.removeItem(answersKey);
+    window.localStorage.removeItem(queueKey);
     window.localStorage.removeItem(stepKey);
     window.localStorage.removeItem(demographicsKey);
   }
@@ -305,12 +454,12 @@ export function Workspace() {
         ref={scrollRef}
         className="soft-scroll mt-4 flex-1 space-y-4 overflow-y-auto pr-1"
       >
-        {intakeQuestions.slice(0, isReview ? totalSteps : step + 1).map((item, index) => {
+        {queue.slice(0, isReview ? totalSteps : step + 1).map((item, index) => {
           const answered = index < step || isReview;
           const isCurrent = index === step && !isReview;
 
           return (
-            <div key={item.question} className="space-y-2">
+            <div key={item.id} className="space-y-2">
               {}
               <div className="flex items-start gap-2.5">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-[var(--accent-strong)]">
@@ -323,12 +472,12 @@ export function Workspace() {
 
               {}
               {answered ? (
-                editingIndex === index ? (
+                editingId === item.id ? (
                   <div className="ml-auto max-w-[88%]">
                     <textarea
                       autoFocus
-                      value={answers[index]}
-                      onChange={(event) => updateAnswer(index, event.target.value)}
+                      value={answers[item.id] ?? ""}
+                      onChange={(event) => updateAnswer(item.id, event.target.value)}
                       rows={3}
                       className="w-full resize-none rounded-2xl border border-[var(--accent)] bg-white p-3 text-sm leading-6 outline-none ring-4 ring-[var(--accent-ring)]"
                     />
@@ -336,7 +485,7 @@ export function Workspace() {
                       <button
                         type="button"
                         onClick={() => {
-                          setEditingIndex(null);
+                          setEditingId(null);
                           classifyLive(answers);
                         }}
                         className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white"
@@ -350,14 +499,14 @@ export function Workspace() {
                   <div className="group ml-auto flex max-w-[88%] items-start justify-end gap-2">
                     <button
                       type="button"
-                      onClick={() => setEditingIndex(index)}
+                      onClick={() => setEditingId(item.id)}
                       aria-label="Edit answer"
                       className="mt-2 shrink-0 text-[var(--ink-soft)] opacity-0 transition hover:text-[var(--accent-strong)] group-hover:opacity-100"
                     >
                       <Pencil size={14} />
                     </button>
                     <div className="bubble-in rounded-2xl rounded-tr-sm bg-[var(--accent)] px-4 py-3 text-sm leading-6 text-white shadow-sm">
-                      {answers[index]?.trim() || (
+                      {answers[item.id]?.trim() || (
                         <span className="italic text-white/70">Skipped</span>
                       )}
                     </div>
@@ -377,8 +526,8 @@ export function Workspace() {
                   <div className="ml-auto max-w-[88%]">
                     <textarea
                       ref={composerRef}
-                      value={answers[step] ?? ""}
-                      onChange={(event) => updateAnswer(step, event.target.value)}
+                      value={answers[item.id] ?? ""}
+                      onChange={(event) => updateAnswer(item.id, event.target.value)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" && !event.shiftKey) {
                           event.preventDefault();
@@ -458,7 +607,7 @@ export function Workspace() {
       </div>
 
       <p className="mt-6 text-center text-xs leading-5 text-[var(--ink-soft)]">
-        FlareWise is not a medical device and does not provide diagnosis or treatment advice.
+        Mira is not a medical device and does not provide diagnosis or treatment advice.
       </p>
 
       {loading ? (
@@ -467,6 +616,8 @@ export function Workspace() {
           signal={signal}
           demographics={demographics}
           onChangeDemographics={updateDemographic}
+          ready={analysisReady}
+          onContinue={viewResults}
         />
       ) : null}
     </div>
@@ -497,7 +648,7 @@ function OnDeviceSignal({
         </span>
         <span className="text-[var(--ink-soft)]">
           Only {signal.coverage.inVocabTokens} of {signal.coverage.totalTokens} words match the local
-          model&apos;s 995-word vocab - keep answering for a clearer signal.
+          model&apos;s vocabulary - keep answering for a clearer signal.
         </span>
       </div>
     );
@@ -545,12 +696,16 @@ function AnalyzingOverlay({
   message,
   signal,
   demographics,
-  onChangeDemographics
+  onChangeDemographics,
+  ready,
+  onContinue
 }: {
   message: string;
   signal: LocalModelResult | null;
   demographics: Demographics;
   onChangeDemographics: <K extends keyof Demographics>(field: K, value: Demographics[K]) => void;
+  ready: boolean;
+  onContinue: () => void;
 }) {
   return (
     <div className="overlay-in fixed inset-0 z-[60] flex items-center justify-center bg-[var(--foreground)]/45 px-4 backdrop-blur-sm">
@@ -558,10 +713,18 @@ function AnalyzingOverlay({
         {}
         <div className="bg-[var(--foreground)] p-6 text-white">
           <div className="mb-4 h-10 w-10">
-            <div className="ring-spin h-10 w-10 rounded-full border-[3px] border-white/20 border-t-[var(--accent)]" />
+            {ready ? (
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent)]">
+                <Check size={22} />
+              </div>
+            ) : (
+              <div className="ring-spin h-10 w-10 rounded-full border-[3px] border-white/20 border-t-[var(--accent)]" />
+            )}
           </div>
-          <h2 className="text-lg font-semibold">Building your brief</h2>
-          <p className="mt-2 min-h-[44px] text-sm leading-6 text-white/75">{message}</p>
+          <h2 className="text-lg font-semibold">{ready ? "Your brief is ready" : "Building your brief"}</h2>
+          <p className="mt-2 min-h-[44px] text-sm leading-6 text-white/75">
+            {ready ? "Finish any details on the right, then open your brief." : message}
+          </p>
           {signal && signal.coverage.sufficient ? (
             <div className="mt-4 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/80">
               On-device model:{" "}
@@ -570,10 +733,22 @@ function AnalyzingOverlay({
               <span className="font-semibold">{signal.priority}</span>
             </div>
           ) : null}
-          <div className="mt-5 space-y-1.5 text-[11px] text-white/60">
-            <p>Usually ~10 seconds.</p>
-            <p>Anything you fill in here is saved to your brief.</p>
-          </div>
+          {ready ? (
+            <button
+              type="button"
+              onClick={onContinue}
+              data-sound="send"
+              className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-strong)]"
+            >
+              View your brief
+              <ArrowRight size={16} />
+            </button>
+          ) : (
+            <div className="mt-5 space-y-1.5 text-[11px] text-white/60">
+              <p>Usually ~10 seconds.</p>
+              <p>Anything you fill in here is saved to your brief.</p>
+            </div>
+          )}
         </div>
 
         {}

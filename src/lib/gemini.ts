@@ -55,7 +55,7 @@ export async function runAnalysis(
 
 Treat this as a SECOND OPINION, not ground truth. If the notes clearly disagree with these labels, disregard them and add an entry to "missingInformation" saying "Local classifier suggested <X> but notes do not support that - needs verification". If they agree, you may reference the broad domain in mainConcerns or patterns without medicalising it.`
     : `A locally trained TF-IDF multinomial logistic regression classifier ran on the notes but matched too few in-vocab tokens (${localModel.coverage.inVocabTokens} of ${localModel.coverage.totalTokens}) to produce a useful signal. Do not reference any specific domain or priority from it.`;
-  const prompt = `You are FlareWise, a chronic illness note understanding system for a hackathon prototype.
+  const prompt = `You are Mira, a chronic illness note understanding system for a hackathon prototype.
 
 Return JSON only. Do not diagnose. Do not give treatment advice. Organize only user provided notes.
 
@@ -120,7 +120,7 @@ ${notes}`;
 
 export async function runStressTests() {
   const model = getModel();
-  const prompt = `You are evaluating FlareWise on synthetic chronic illness notes.
+  const prompt = `You are evaluating Mira on synthetic chronic illness notes.
 
 Run seven stress tests using these categories:
 Clean, Typo heavy, Vague timing, Negation heavy, Contradictory, Urgent symptom, Long messy paragraph.
