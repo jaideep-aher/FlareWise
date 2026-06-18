@@ -4,10 +4,14 @@ import { runAnalysis } from "@/lib/gemini";
 import { classifyWithLocalModel } from "@/lib/localModel";
 import { detectSafetyFlags } from "@/lib/safety";
 import { scoreTriage } from "@/lib/triage";
-import { compareOpinions } from "@/lib/agreement";
+import { compareDomains } from "@/lib/agreement";
+import { classifyWithTransformer } from "@/lib/transformerModel";
 
 const requestSchema = z.object({
-  notes: z.string().min(20).max(12000)
+  notes: z.string().min(20).max(12000),
+  // Patient answers only (no question text). Used for keyword/rule-based
+  // detection so the intake question wording does not trigger false flags.
+  answersText: z.string().max(12000).optional()
 });
 
 function providerMessage(error: unknown) {
@@ -36,18 +40,31 @@ export async function POST(request: Request) {
       );
     }
 
-    const safetyFlags = detectSafetyFlags(parsed.data.notes);
-    const localModel = classifyWithLocalModel(parsed.data.notes);
-    const result = await runAnalysis(parsed.data.notes, safetyFlags, localModel);
+    // Rule-based detection and the trained classifiers must only see the
+    // patient's answers, never the question wording (which can itself contain
+    // red-flag phrases like "trouble speaking"). The LLM still gets the full
+    // question + answer notes for context.
+    const ruleText =
+      parsed.data.answersText && parsed.data.answersText.trim().length >= 8
+        ? parsed.data.answersText
+        : parsed.data.notes;
+
+    const safetyFlags = detectSafetyFlags(ruleText);
+    const localModel = classifyWithLocalModel(ruleText);
+    // Run the LLM analysis and the fine-tuned transformer concurrently.
+    const [result, transformer] = await Promise.all([
+      runAnalysis(parsed.data.notes, safetyFlags, localModel),
+      classifyWithTransformer(ruleText)
+    ]);
     const triage = scoreTriage({
-      notes: parsed.data.notes,
+      notes: ruleText,
       events: result.events,
       safetyFlags,
       localModel
     });
-    const agreement = compareOpinions(triage, localModel);
+    const agreement = compareDomains(localModel, transformer);
 
-    return NextResponse.json({ ...result, triage, agreement, localModel });
+    return NextResponse.json({ ...result, triage, agreement, transformer, localModel });
   } catch (error) {
     return NextResponse.json({ error: providerMessage(error) }, { status: 500 });
   }

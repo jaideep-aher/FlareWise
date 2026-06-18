@@ -2,9 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import { Activity, AlertTriangle, Cpu, Download, FileText, Scale, ShieldCheck, Table2, User } from "lucide-react";
+import { Activity, AlertTriangle, Cpu, Download, FileText, ShieldCheck, Table2, User } from "lucide-react";
 import { useSavedAnalysis } from "@/components/useSavedAnalysis";
-import type { AnalysisResult, Demographics, TriageScore } from "@/lib/types";
+import type {
+  AgreementReport,
+  AnalysisResult,
+  Demographics,
+  LocalModelResult,
+  TransformerResult,
+  TriageScore
+} from "@/lib/types";
 
 const emptyDemographics: Demographics = {
   name: "",
@@ -18,6 +25,7 @@ const emptyDemographics: Demographics = {
 export function ResultsPage() {
   const { analysis, ready } = useSavedAnalysis();
   const [demographics, setDemographics] = useState<Demographics>(emptyDemographics);
+  const [modelView, setModelView] = useState<"neural" | "classical">("neural");
   
   useEffect(() => {
     const saved = window.localStorage.getItem("flarewise.demographics");
@@ -35,9 +43,25 @@ export function ResultsPage() {
     if (!analysis) return;
     const exportedTriage = analysis.triage ?? fallbackTriage(analysis.safetyFlags);
 
+    const demoLines: string[] = [];
+    if (hasDemographics) {
+      demoLines.push("Patient details:");
+      if (demographics.name) demoLines.push(`- Name: ${demographics.name}`);
+      const ageSex = [demographics.age && `Age ${demographics.age}`, demographics.sex]
+        .filter(Boolean)
+        .join(", ");
+      if (ageSex) demoLines.push(`- ${ageSex}`);
+      if (demographics.primaryCare) demoLines.push(`- Primary care: ${demographics.primaryCare}`);
+      if (demographics.allergies) demoLines.push(`- Allergies: ${demographics.allergies}`);
+      if (demographics.currentMedications)
+        demoLines.push(`- Current medications: ${demographics.currentMedications}`);
+      demoLines.push("");
+    }
+
     const brief = [
-      "FlareWise Doctor Visit Brief",
+      "Mira Doctor Visit Brief",
       "",
+      ...demoLines,
       "Care priority:",
       `${exportedTriage.level} (${exportedTriage.score}/100, urgency ${exportedTriage.urgencyLevel}/5)`,
       exportedTriage.timeframe,
@@ -64,7 +88,7 @@ export function ResultsPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "flarewise-doctor-brief.txt";
+    link.download = "mira-doctor-brief.txt";
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -90,13 +114,8 @@ export function ResultsPage() {
   const localModel = analysis.localModel;
   const triage = analysis.triage ?? fallbackTriage(analysis.safetyFlags);
   const agreement = analysis.agreement;
+  const transformer = analysis.transformer;
   const palette = urgencyPalette(triage.urgencyLevel);
-  const domainReady =
-    localModel &&
-    visibleSafetyFlags.length === 0 &&
-    localModel.coverage.sufficient &&
-    localModel.topDomain !== "Mixed signal" &&
-    localModel.confidence >= 0.55;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -213,40 +232,6 @@ export function ResultsPage() {
         </div>
       </section>
 
-      {agreement ? (
-        <section
-          className={`mb-5 rounded-lg border p-5 shadow-sm ${
-            agreement.agree ? "border-[var(--line)] bg-white" : "border-amber-200 bg-amber-50"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <Scale size={17} className={agreement.agree ? "text-[var(--accent)]" : "text-amber-700"} />
-            <h2 className="text-base font-semibold">
-              {agreement.agree ? "Rules and model agree" : "Rules and model disagree"}
-            </h2>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-md border border-[var(--line)] bg-[var(--muted)] p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-soft)]">
-                Rule-based triage
-              </div>
-              <div className="mt-1 text-lg font-semibold">{agreement.ruleVerdict}</div>
-              <div className="mt-1 text-xs text-[var(--ink-soft)]">Deterministic safety net</div>
-            </div>
-            <div className="rounded-md border border-[var(--line)] bg-[var(--muted)] p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-soft)]">
-                Local model
-              </div>
-              <div className="mt-1 text-lg font-semibold">{agreement.modelVerdict}</div>
-              <div className="mt-1 text-xs text-[var(--ink-soft)]">
-                Confidence {Math.round(agreement.modelConfidence * 100)}%
-              </div>
-            </div>
-          </div>
-          <p className="mt-3 text-sm leading-6 text-[var(--ink-soft)]">{agreement.note}</p>
-        </section>
-      ) : null}
-
       <div className="grid gap-5 lg:grid-cols-[1.25fr_0.75fr]">
         <section className="rounded-lg border border-[var(--line)] bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold">Pre-visit summary</h2>
@@ -316,45 +301,14 @@ export function ResultsPage() {
         />
       </div>
 
-      {localModel ? (
-        <section className="mt-5 rounded-lg border border-[var(--line)] bg-white p-5 shadow-sm">
-          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-            <div>
-              <div className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent-strong)]">
-                <Cpu size={16} />
-                Local model signal
-              </div>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--ink-soft)]">
-                The custom TF-IDF logistic regression model adds a quick domain and priority signal. It supports the brief but does not diagnose.
-              </p>
-            </div>
-            <div className="rounded-md border border-[var(--line)] bg-[var(--muted)] px-4 py-3 text-sm">
-              Test accuracy {Math.round(localModel.testAccuracy * 100)}%
-            </div>
-          </div>
-          <div className="mt-4 grid gap-3 lg:grid-cols-2">
-            <SignalCard
-              label="Symptom area"
-              value={domainReady ? localModel.topDomain : "Supporting signal only"}
-              detail={
-                domainReady
-                  ? `Confidence ${Math.round(localModel.confidence * 100)}%`
-                  : "The brief uses the note details first. The classifier is kept in the background when severity or ambiguity needs clinician review."
-              }
-              muted={!domainReady}
-            />
-            <SignalCard
-              label="Appointment signal"
-              value={visibleSafetyFlags.length ? "Discuss with clinician" : localModel.priority}
-              detail={
-                visibleSafetyFlags.length
-                  ? visibleSafetyFlags[0].term
-                  : `Model confidence ${Math.round(localModel.priorityConfidence * 100)}%`
-              }
-              muted={false}
-            />
-          </div>
-        </section>
+      {transformer || localModel ? (
+        <ModelEstimateCard
+          transformer={transformer}
+          localModel={localModel}
+          agreement={agreement}
+          view={modelView}
+          onView={setModelView}
+        />
       ) : null}
 
       <div className="mt-5 grid gap-4 lg:grid-cols-3">
@@ -391,6 +345,128 @@ export function ResultsPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function ModelEstimateCard({
+  transformer,
+  localModel,
+  agreement,
+  view,
+  onView
+}: {
+  transformer: TransformerResult | null | undefined;
+  localModel: LocalModelResult | undefined;
+  agreement: AgreementReport | undefined;
+  view: "neural" | "classical";
+  onView: (view: "neural" | "classical") => void;
+}) {
+  const hasNeural = !!transformer;
+  const hasClassical = !!localModel;
+  const showToggle = hasNeural && hasClassical;
+  const effective: "neural" | "classical" =
+    view === "neural" ? (hasNeural ? "neural" : "classical") : hasClassical ? "classical" : "neural";
+
+  const selected =
+    effective === "neural" && transformer
+      ? {
+          modelLabel: "DistilBERT (fine-tuned)",
+          domain: transformer.topDomain,
+          confidence: transformer.domainConfidence,
+          preds: transformer.domainLabels.map((item) => ({ label: item.label, score: item.score })),
+          note: `Test accuracy ${Math.round(transformer.accuracy * 100)}% · macro-F1 ${transformer.macroF1.toFixed(2)}`
+        }
+      : localModel
+        ? {
+            modelLabel: "TF-IDF + logistic regression",
+            domain: localModel.topDomain,
+            confidence: localModel.confidence,
+            preds: localModel.topPredictions.map((item) => ({ label: item.domain, score: item.confidence })),
+            note: `Test accuracy ${Math.round(localModel.testAccuracy * 100)}%`
+          }
+        : null;
+
+  if (!selected) return null;
+
+  return (
+    <section className="mt-5 rounded-lg border border-[var(--line)] bg-white p-5 shadow-sm">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+        <div>
+          <div className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent-strong)]">
+            <Cpu size={16} />
+            Likely symptom area (AI estimate)
+          </div>
+          <p className="mt-1 text-xs text-[var(--ink-soft)]">
+            A broad symptom-area estimate to help triage. Not a diagnosis.
+          </p>
+        </div>
+        {showToggle ? (
+          <div className="inline-flex shrink-0 rounded-lg border border-[var(--line)] bg-[var(--muted)] p-0.5 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => onView("neural")}
+              className={`rounded-md px-3 py-1.5 transition ${
+                effective === "neural"
+                  ? "bg-white text-[var(--accent-strong)] shadow-sm"
+                  : "text-[var(--ink-soft)]"
+              }`}
+            >
+              DistilBERT
+            </button>
+            <button
+              type="button"
+              onClick={() => onView("classical")}
+              className={`rounded-md px-3 py-1.5 transition ${
+                effective === "classical"
+                  ? "bg-white text-[var(--accent-strong)] shadow-sm"
+                  : "text-[var(--ink-soft)]"
+              }`}
+            >
+              TF-IDF
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <div className="rounded-md bg-[var(--foreground)] p-5 text-white">
+          <div className="text-sm text-white/70">Most likely area</div>
+          <div className="mt-2 text-2xl font-semibold">{selected.domain}</div>
+          <div className="mt-2 text-sm text-white/70">
+            Confidence {Math.round(selected.confidence * 100)}%
+          </div>
+        </div>
+        <div className="rounded-md border border-[var(--line)] bg-[var(--muted)] p-5">
+          <div className="text-sm text-[var(--ink-soft)]">Other possibilities</div>
+          <div className="mt-2 grid gap-1.5">
+            {selected.preds.slice(0, 4).map((item) => (
+              <div key={item.label} className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-medium">{item.label}</span>
+                <span className="text-[var(--ink-soft)]">{Math.round(item.score * 100)}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--ink-soft)]">
+        <span>
+          Showing: <span className="font-medium text-[var(--foreground)]">{selected.modelLabel}</span> ·{" "}
+          {selected.note}
+        </span>
+        {showToggle && agreement ? (
+          <span
+            className={`rounded-md px-2 py-0.5 font-medium ${
+              agreement.agree
+                ? "bg-[var(--accent-soft)] text-[var(--accent-strong)]"
+                : "bg-amber-50 text-amber-800"
+            }`}
+          >
+            {agreement.agree ? "Both models agree" : "Models differ"}
+          </span>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -452,32 +528,6 @@ function BriefPreview({ title, items }: { title: string; items: string[] }) {
         ))}
       </ul>
     </section>
-  );
-}
-
-function SignalCard({
-  label,
-  value,
-  detail,
-  muted
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  muted: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-md p-5 ${
-        muted ? "border border-[var(--line)] bg-[var(--muted)]" : "bg-[var(--foreground)] text-white"
-      }`}
-    >
-      <div className={muted ? "text-sm text-[var(--ink-soft)]" : "text-sm text-white/70"}>{label}</div>
-      <div className="mt-2 text-xl font-semibold">{value}</div>
-      <div className={muted ? "mt-2 text-sm leading-6 text-[var(--ink-soft)]" : "mt-2 text-sm leading-6 text-white/70"}>
-        {detail}
-      </div>
-    </div>
   );
 }
 

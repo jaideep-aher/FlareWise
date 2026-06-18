@@ -7,7 +7,7 @@ const cards = [
   },
   {
     title: "Model Approach",
-    body: "From-scratch TF-IDF + multinomial logistic regression classifiers (no Python, no external ML libs - trained in JavaScript) run per-sentence on every intake. Sentences classified as intake-meta (\"tried ibuprofen\", \"doctor visit was Tuesday\") are dropped before aggregation. The result is shown live during intake AND passed into the language model prompt as a second opinion. The language model handles structured extraction, cautious generation, and a self-audit in a single pass."
+    body: "Several components work together: deterministic, negation-aware safety rules drive the urgency triage score; a from-scratch TF-IDF + multinomial logistic regression classifier and a fine-tuned DistilBERT transformer both classify the symptom area and are compared head-to-head in an agreement panel that surfaces disagreement; and a general-purpose language model handles structured extraction, cautious generation, and a self-audit in a single pass."
   },
   {
     title: "Data Augmentation",
@@ -74,9 +74,10 @@ export default function Method() {
     <AppFrame>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold">Hackathon Method</h1>
+          <h1 className="text-2xl font-semibold">Method &amp; Evaluation</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--ink-soft)]">
-            FlareWise focuses on whether a language model understood messy health notes faithfully enough to produce a useful appointment summary.
+            How Mira turns messy patient notes into a reliable pre-visit brief, and how each model
+            is evaluated so the output can be trusted.
           </p>
         </div>
 
@@ -139,6 +140,27 @@ export default function Method() {
         </section>
 
         <section className="mt-4 rounded-lg border border-[var(--line)] bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold">Fine-tuned Transformer + Classical-vs-Neural Comparison</h2>
+          <p className="mt-3 text-sm leading-6 text-[var(--ink-soft)]">
+            A <code>distilbert-base-uncased</code> transformer was <strong>fine-tuned</strong> on the
+            combined symptom corpus (<code>gretelai/symptom_to_diagnosis</code> +{" "}
+            <code>NeuronZero/Symptom2Disease</code>, ~2,000 rows mapped into the same 7 domains) with
+            class weighting and early stopping, then exported to ONNX and run in-app through
+            Transformers.js. On the held-out test split it reached{" "}
+            <strong>99.5% accuracy / 0.994 macro-F1</strong>, versus{" "}
+            <strong>98.6% / 0.988</strong> for the from-scratch TF-IDF + logistic regression model.
+          </p>
+          <p className="mt-3 text-sm leading-6 text-[var(--ink-soft)]">
+            Both trained models classify each note&rsquo;s symptom area, and the results page compares
+            them head-to-head. The comparison is itself an evaluation artifact: when the classical and
+            neural models split on a domain, the note is flagged as ambiguous. The per-class report
+            shows the weakest domain is <code>metabolic_or_systemic</code> (recall 0.94), which is
+            also the smallest class (17 test examples). That points directly at class imbalance as
+            the next thing to fix with more data.
+          </p>
+        </section>
+
+        <section className="mt-4 rounded-lg border border-[var(--line)] bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold">Product Roadmap</h2>
           <p className="mt-3 text-sm leading-6 text-[var(--ink-soft)]">
             The useful product is not only a one-time summary. The longer-term app should help a patient prepare before a visit, capture what the clinician said afterward, and monitor what happens during the days after a treatment change.
@@ -166,9 +188,11 @@ export default function Method() {
         </section>
 
         <section className="mt-4 rounded-lg border border-[var(--line)] bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold">Juno-Style Feature Inspiration</h2>
+          <h2 className="text-lg font-semibold">Planned Directions</h2>
           <p className="mt-3 text-sm leading-6 text-[var(--ink-soft)]">
-            Public Juno materials describe a chronic illness app with natural conversations, continuous symptom tracking, longitudinal context, pattern detection, biometrics, and appointment-ready reports. FlareWise uses that category as inspiration while focusing this prototype on reliable pre-visit intake.
+            The longer-term vision is a chronic-illness companion with natural conversations, continuous
+            symptom tracking, longitudinal context, pattern detection, biometrics, and appointment-ready
+            reports. This prototype focuses on the first and highest-leverage step: reliable pre-visit intake.
           </p>
           <div className="mt-4 grid gap-2 md:grid-cols-2">
             {junoRows.map((row) => (
@@ -197,9 +221,13 @@ export default function Method() {
         </section>
 
         <section className="mt-4 rounded-lg border border-[var(--line)] bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold">Pitch Summary</h2>
+          <h2 className="text-lg font-semibold">Summary</h2>
           <p className="mt-3 text-sm leading-6 text-[var(--ink-soft)]">
-            The project combines a trained local NLP classifier with transfer from a general pre trained language model into chronic illness note understanding through task specific schemas and evaluator prompts. Instead of treating the summary as automatically correct, the app checks unsupported claims, missed details, negation, timing, and safety risk.
+            Mira combines trained local NLP classifiers (a from-scratch TF-IDF model and a
+            fine-tuned DistilBERT transformer) with a general pre-trained language model, applied to
+            chronic-illness note understanding through task-specific schemas and evaluator prompts.
+            Instead of treating the summary as automatically correct, the app checks unsupported claims,
+            missed details, negation, timing, and safety risk, so clinicians get data they can trust.
           </p>
         </section>
       </div>

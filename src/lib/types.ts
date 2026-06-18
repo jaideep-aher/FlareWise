@@ -75,10 +75,25 @@ export type TriageScore = {
   redFlags: string[];
 };
 
+export type TransformerResult = {
+  modelName: string;
+  modelId: string;
+  topDomain: string;
+  domainConfidence: number;
+  domainLabels: Array<{ label: string; score: number }>;
+  accuracy: number;
+  macroF1: number;
+};
+
+export type MethodOpinion = {
+  method: string;
+  kind: "rules" | "classical" | "transformer";
+  verdict: string;
+  detail: string;
+};
+
 export type AgreementReport = {
-  ruleVerdict: string;
-  modelVerdict: string;
-  modelConfidence: number;
+  opinions: MethodOpinion[];
   agree: boolean;
   note: string;
 };
@@ -91,6 +106,7 @@ export type AnalysisResult = {
   reliability: ReliabilityReport;
   triage: TriageScore;
   agreement?: AgreementReport;
+  transformer?: TransformerResult | null;
   safetyFlags: SafetyFlag[];
   missingInformation: string[];
   transferLearningNote: string;

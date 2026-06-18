@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, FileText, FlaskConical, Home, PenLine } from "lucide-react";
+import { BarChart3, FileText, FlaskConical, HeartPulse, Home, PenLine } from "lucide-react";
 import { SoundToggle } from "@/components/SoundProvider";
 
 const links = [
   { href: "/", label: "Home", icon: Home, exact: true },
+  { href: "/why", label: "Why", icon: HeartPulse },
   { href: "/workspace", label: "Intake", icon: PenLine },
   { href: "/results", label: "Results", icon: BarChart3 },
   { href: "/stress-tests", label: "Stress Tests", icon: FlaskConical },
@@ -25,10 +26,10 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
               href="/"
               className="text-2xl font-semibold tracking-tight text-[var(--foreground)] transition hover:text-[var(--accent-strong)]"
             >
-              FlareWise
+              Mira
             </Link>
             <p className="mt-0.5 text-sm text-[var(--ink-soft)]">
-              Smart pre-visit intake for doctors
+              Your calm health companion, before and after every visit
             </p>
           </div>
           <nav className="flex max-w-full items-center gap-2 overflow-x-auto soft-scroll">

@@ -1,6 +1,11 @@
 import type { HealthEvent, LocalModelResult, SafetyFlag, TriageScore } from "@/lib/types";
 
+// Numeric durations of ~5+ days, e.g. "5 days", "2 weeks", "3 months".
 const durationPattern = /\b(?:[5-9]|1\d|2\d|3\d)\s*(?:days?|weeks?|months?)\b/i;
+// Worded durations that also imply something has lingered, e.g. "past week",
+// "a week", "several days", "a few weeks", "couple of months".
+const wordedDurationPattern =
+  /\b(?:a|the|past|this|last|several|few|couple(?:\s+of)?)\s+(?:days?|weeks?|months?)\b/i;
 
 // Negation guard reused from the safety rules: a term only counts if it is not
 // preceded by a negation word inside the same clause ("no chest pain").
@@ -24,7 +29,7 @@ function any(lower: string, terms: string[]): boolean {
 
 // Deterministic red-flag combinations. Each fires only when ALL of its parts
 // appear (negation-aware). These are the clinical "do not miss" pairings that
-// must escalate care regardless of what the statistical model predicts — the
+// must escalate care regardless of what the statistical model predicts - the
 // rules are the safety net under the ML.
 const redFlagRules: Array<{ label: string; test: (lower: string) => boolean }> = [
   {
@@ -142,19 +147,27 @@ export function scoreTriage({
   } else if (severity >= 7) {
     score = Math.max(score, 62);
     reasons.push(`Reported severity is ${severity}/10.`);
+  } else if (severity >= 4) {
+    // Moderate symptoms nudge upward so they can reach "Soon" when they have
+    // also persisted, without forcing it on their own.
+    score += 18;
+    reasons.push(`Reported severity is ${severity}/10.`);
   }
 
-  if (durationPattern.test(lower)) {
-    score += 8;
+  if (durationPattern.test(lower) || wordedDurationPattern.test(lower)) {
+    score += 10;
     reasons.push("Symptoms have lasted several days or more.");
   }
 
-  if (localModel.priority === "Priority Review" && localModel.priorityConfidence >= 0.45) {
-    score = Math.max(score, 72);
-    reasons.push("The local model found a priority-review signal.");
-  } else if (localModel.priority === "Clinician Discussion" && localModel.priorityConfidence >= 0.45) {
-    score = Math.max(score, 58);
-    reasons.push("The local model found a clinician-discussion signal.");
+  // The trained priority head is a soft secondary signal, so it only nudges the
+  // score rather than setting a floor. Escalation to Priority/Emergency is driven
+  // by red flags, urgent terms, and high severity, not by this model alone.
+  if (localModel.priority === "Priority Review" && localModel.priorityConfidence >= 0.5) {
+    score += 18;
+    reasons.push("The local model flagged a priority-review signal.");
+  } else if (localModel.priority === "Clinician Discussion" && localModel.priorityConfidence >= 0.5) {
+    score += 8;
+    reasons.push("The local model flagged a clinician-discussion signal.");
   }
 
   if (events.some((event) => event.type === "medication")) {
