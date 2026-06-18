@@ -3,6 +3,7 @@ import { z } from "zod";
 import { runAnalysis } from "@/lib/gemini";
 import { classifyWithLocalModel } from "@/lib/localModel";
 import { detectSafetyFlags } from "@/lib/safety";
+import { scoreTriage } from "@/lib/triage";
 
 const requestSchema = z.object({
   notes: z.string().min(20).max(12000)
@@ -37,8 +38,14 @@ export async function POST(request: Request) {
     const safetyFlags = detectSafetyFlags(parsed.data.notes);
     const localModel = classifyWithLocalModel(parsed.data.notes);
     const result = await runAnalysis(parsed.data.notes, safetyFlags, localModel);
+    const triage = scoreTriage({
+      notes: parsed.data.notes,
+      events: result.events,
+      safetyFlags,
+      localModel
+    });
 
-    return NextResponse.json({ ...result, localModel });
+    return NextResponse.json({ ...result, triage, localModel });
   } catch (error) {
     return NextResponse.json({ error: providerMessage(error) }, { status: 500 });
   }

@@ -65,12 +65,20 @@ export type ReliabilityReport = {
   issues: ReliabilityIssue[];
 };
 
+export type TriageScore = {
+  score: number;
+  level: "Routine" | "Soon" | "Priority" | "Emergency";
+  timeframe: string;
+  reasons: string[];
+};
+
 export type AnalysisResult = {
   events: HealthEvent[];
   weeklySummary: string;
   doctorBrief: DoctorBrief;
   patterns: PatternFinding[];
   reliability: ReliabilityReport;
+  triage: TriageScore;
   safetyFlags: SafetyFlag[];
   missingInformation: string[];
   transferLearningNote: string;

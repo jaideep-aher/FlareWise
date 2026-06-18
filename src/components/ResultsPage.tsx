@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import { Download, FileText, ShieldCheck, Table2, User } from "lucide-react";
+import { Activity, AlertTriangle, Cpu, Download, FileText, ShieldCheck, Table2, User } from "lucide-react";
 import { useSavedAnalysis } from "@/components/useSavedAnalysis";
 import type { Demographics } from "@/lib/types";
 
@@ -33,9 +33,24 @@ export function ResultsPage() {
 
   function exportBrief() {
     if (!analysis) return;
+    const exportedTriage = analysis.triage ?? {
+      score: analysis.safetyFlags.some((flag) => flag.level !== "routine") ? 70 : 25,
+      level: analysis.safetyFlags.some((flag) => flag.level !== "routine") ? "Priority" : "Routine",
+      timeframe: analysis.safetyFlags.some((flag) => flag.level !== "routine")
+        ? "Same day or next available clinician advice"
+        : "Bring up at the next routine visit",
+      reasons: analysis.safetyFlags.some((flag) => flag.level !== "routine")
+        ? [analysis.safetyFlags.find((flag) => flag.level !== "routine")?.message ?? "Clinician discussion may be needed."]
+        : ["No urgent trigger terms or high severity were detected."]
+    };
 
     const brief = [
       "FlareWise Doctor Visit Brief",
+      "",
+      "Care priority:",
+      `${exportedTriage.level} (${exportedTriage.score}/100)`,
+      exportedTriage.timeframe,
+      ...exportedTriage.reasons.map((item) => `- ${item}`),
       "",
       "Main concerns:",
       ...analysis.doctorBrief.mainConcerns.map((item) => `- ${item}`),
@@ -75,6 +90,25 @@ export function ResultsPage() {
       </div>
     );
   }
+
+  const visibleSafetyFlags = analysis.safetyFlags.filter((flag) => flag.level !== "routine");
+  const localModel = analysis.localModel;
+  const triage = analysis.triage ?? {
+    score: visibleSafetyFlags.length ? 70 : 25,
+    level: visibleSafetyFlags.length ? "Priority" : "Routine",
+    timeframe: visibleSafetyFlags.length
+      ? "Same day or next available clinician advice"
+      : "Bring up at the next routine visit",
+    reasons: visibleSafetyFlags.length
+      ? [visibleSafetyFlags[0].message]
+      : ["No urgent trigger terms or high severity were detected."]
+  };
+  const domainReady =
+    localModel &&
+    visibleSafetyFlags.length === 0 &&
+    localModel.coverage.sufficient &&
+    localModel.topDomain !== "Mixed signal" &&
+    localModel.confidence >= 0.55;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -135,87 +169,141 @@ export function ResultsPage() {
         </section>
       ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+      <section className="mb-5 rounded-lg border border-[var(--line)] bg-[var(--foreground)] p-5 text-white shadow-sm">
+        <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-white/10 text-[var(--accent-soft)]">
+              <Activity size={24} />
+            </div>
+            <div>
+              <div className="text-sm text-white/65">Care priority score</div>
+              <h2 className="mt-1 text-3xl font-semibold">{triage.level}</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70">{triage.timeframe}</p>
+            </div>
+          </div>
+          <div className="lg:text-right">
+            <div className="text-6xl font-semibold">
+              {triage.score}
+              <span className="text-xl text-white/55">/100</span>
+            </div>
+            <div className="mt-1 text-xs text-white/55">Rule based from severity, duration, safety flags, and model signal</div>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-2 md:grid-cols-3">
+          {triage.reasons.map((reason) => (
+            <div key={reason} className="rounded-md bg-white/10 px-3 py-2 text-sm leading-6 text-white/80">
+              {reason}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div className="grid gap-5 lg:grid-cols-[1.25fr_0.75fr]">
         <section className="rounded-lg border border-[var(--line)] bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold">Pre-visit summary</h2>
           <p className="mt-3 text-base leading-8 text-[var(--ink-soft)]">{analysis.weeklySummary}</p>
         </section>
 
-        <section className="rounded-lg border border-[var(--line)] bg-[var(--foreground)] p-5 text-white shadow-sm">
-          <div className="flex items-baseline justify-between gap-2">
-            <div className="text-sm text-white/70">Self-audit score</div>
-            <div className="text-[10px] uppercase tracking-wide text-white/40">Same model</div>
+        <section className="grid gap-3">
+          <div className="rounded-lg border border-[var(--line)] bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Brief quality check</div>
+                <div className="mt-1 text-xs text-[var(--ink-soft)]">Checks support, gaps, and timing.</div>
+              </div>
+              <div className="text-right">
+                <div className="text-3xl font-semibold text-[var(--foreground)]">
+                  {analysis.reliability.score}
+                  <span className="text-sm text-[var(--ink-soft)]">/100</span>
+                </div>
+                <div className="text-[11px] text-[var(--ink-soft)]">
+                  {analysis.reliability.issues.length} issue{analysis.reliability.issues.length === 1 ? "" : "s"}
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+              <MiniMetric label="Events" value={analysis.events.length} />
+              <MiniMetric label="Issues" value={analysis.reliability.issues.length} />
+              <MiniMetric label="Flags" value={visibleSafetyFlags.length} />
+            </div>
           </div>
-          <div className="mt-2 text-5xl font-semibold">
-            {analysis.reliability.score}
-            <span className="text-xl text-white/60">/100</span>
-          </div>
-          <div className="mt-1 text-[11px] leading-5 text-white/55">
-            The same language model that wrote the brief graded its own output. Treat as a sanity check, not
-            independent verification.
-          </div>
-          <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
-            <MiniMetric label="Events" value={analysis.events.length} />
-            <MiniMetric label="Issues" value={analysis.reliability.issues.length} />
-            <MiniMetric label="Flags" value={analysis.safetyFlags.length} />
+
+          <div
+            className={`rounded-lg border p-5 shadow-sm ${
+              visibleSafetyFlags.length
+                ? "border-amber-200 bg-amber-50 text-amber-950"
+                : "border-[var(--line)] bg-white text-[var(--foreground)]"
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle
+                size={18}
+                className={visibleSafetyFlags.length ? "text-amber-700" : "text-[var(--accent)]"}
+              />
+              <div>
+                <div className="text-sm font-semibold">
+                  {visibleSafetyFlags.length ? "Needs clinician discussion" : "No urgent wording detected"}
+                </div>
+                <p className="mt-1 text-xs leading-5 opacity-75">
+                  {visibleSafetyFlags[0]?.message ??
+                    "The rule check did not find urgent trigger terms in the note."}
+                </p>
+              </div>
+            </div>
           </div>
         </section>
       </div>
 
-      {analysis.localModel ? (
+      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        {analysis.doctorBrief.mainConcerns.length ? (
+          <BriefPreview title="Main concerns" items={analysis.doctorBrief.mainConcerns} />
+        ) : null}
+        {analysis.doctorBrief.questions.length ? (
+          <BriefPreview title="Questions to ask" items={analysis.doctorBrief.questions} />
+        ) : null}
+        <BriefPreview
+          title="Needs clarification"
+          items={analysis.missingInformation.length ? analysis.missingInformation : analysis.doctorBrief.uncertainties}
+        />
+      </div>
+
+      {localModel ? (
         <section className="mt-5 rounded-lg border border-[var(--line)] bg-white p-5 shadow-sm">
           <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
             <div>
-              <h2 className="text-lg font-semibold">Trained local NLP model</h2>
+              <div className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent-strong)]">
+                <Cpu size={16} />
+                Local model signal
+              </div>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--ink-soft)]">
-                A from-scratch TF-IDF + multinomial logistic regression classifier (trained in
-                JavaScript, no external ML libraries) reads each sentence of your intake separately,
-                drops intake-meta sentences like &ldquo;tried ibuprofen&rdquo;, and aggregates the
-                rest into a broad symptom-domain and appointment-priority signal. This is not a
-                diagnosis.
+                The custom TF-IDF logistic regression model adds a quick domain and priority signal. It supports the brief but does not diagnose.
               </p>
             </div>
             <div className="rounded-md border border-[var(--line)] bg-[var(--muted)] px-4 py-3 text-sm">
-              Domain accuracy {Math.round(analysis.localModel.testAccuracy * 100)}%
+              Test accuracy {Math.round(localModel.testAccuracy * 100)}%
             </div>
           </div>
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
-            <div className="rounded-md bg-[var(--foreground)] p-5 text-white">
-              <div className="text-sm text-white/70">Top domain</div>
-              <div className="mt-2 text-2xl font-semibold">{analysis.localModel.topDomain}</div>
-              <div className="mt-2 text-sm text-white/70">
-                Confidence {Math.round(analysis.localModel.confidence * 100)}%
-              </div>
-            </div>
-            <div className="rounded-md bg-[var(--accent-strong)] p-5 text-white">
-              <div className="text-sm text-white/70">Appointment priority</div>
-              <div className="mt-2 text-2xl font-semibold">{analysis.localModel.priority}</div>
-              <div className="mt-2 text-sm text-white/70">
-                Confidence {Math.round(analysis.localModel.priorityConfidence * 100)}%
-              </div>
-            </div>
-          </div>
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
-            <div className="grid gap-2">
-              {analysis.localModel.topPredictions.map((prediction) => (
-                <div key={prediction.domain} className="rounded-md border border-[var(--line)] bg-[var(--muted)] p-3">
-                  <div className="flex items-center justify-between gap-4 text-sm">
-                    <span className="font-medium">{prediction.domain}</span>
-                    <span className="text-[var(--ink-soft)]">{Math.round(prediction.confidence * 100)}%</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="grid gap-2">
-              {analysis.localModel.priorityPredictions.map((prediction) => (
-                <div key={prediction.priority} className="rounded-md border border-[var(--line)] bg-[var(--muted)] p-3">
-                  <div className="flex items-center justify-between gap-4 text-sm">
-                    <span className="font-medium">{prediction.priority}</span>
-                    <span className="text-[var(--ink-soft)]">{Math.round(prediction.confidence * 100)}%</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <SignalCard
+              label="Symptom area"
+              value={domainReady ? localModel.topDomain : "Supporting signal only"}
+              detail={
+                domainReady
+                  ? `Confidence ${Math.round(localModel.confidence * 100)}%`
+                  : "The brief uses the note details first. The classifier is kept in the background when severity or ambiguity needs clinician review."
+              }
+              muted={!domainReady}
+            />
+            <SignalCard
+              label="Appointment signal"
+              value={visibleSafetyFlags.length ? "Discuss with clinician" : localModel.priority}
+              detail={
+                visibleSafetyFlags.length
+                  ? visibleSafetyFlags[0].term
+                  : `Model confidence ${Math.round(localModel.priorityConfidence * 100)}%`
+              }
+              muted={false}
+            />
           </div>
         </section>
       ) : null}
@@ -259,9 +347,53 @@ export function ResultsPage() {
 
 function MiniMetric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-md bg-white/10 p-3">
-      <div className="text-xs text-white/60">{label}</div>
+    <div className="rounded-md bg-[var(--muted)] p-3">
+      <div className="text-xs text-[var(--ink-soft)]">{label}</div>
       <div className="mt-1 text-xl font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function BriefPreview({ title, items }: { title: string; items: string[] }) {
+  const visible = items.length ? items.slice(0, 3) : ["No major gaps listed."];
+
+  return (
+    <section className="rounded-lg border border-[var(--line)] bg-white p-5 shadow-sm">
+      <h2 className="text-base font-semibold">{title}</h2>
+      <ul className="mt-3 space-y-2 text-sm leading-6 text-[var(--ink-soft)]">
+        {visible.map((item) => (
+          <li key={item} className="flex gap-2">
+            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function SignalCard({
+  label,
+  value,
+  detail,
+  muted
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  muted: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-md p-5 ${
+        muted ? "border border-[var(--line)] bg-[var(--muted)]" : "bg-[var(--foreground)] text-white"
+      }`}
+    >
+      <div className={muted ? "text-sm text-[var(--ink-soft)]" : "text-sm text-white/70"}>{label}</div>
+      <div className="mt-2 text-xl font-semibold">{value}</div>
+      <div className={muted ? "mt-2 text-sm leading-6 text-[var(--ink-soft)]" : "mt-2 text-sm leading-6 text-white/70"}>
+        {detail}
+      </div>
     </div>
   );
 }

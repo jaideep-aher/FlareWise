@@ -58,6 +58,15 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       {children}
+      <a
+        href="https://aher.dev/"
+        target="_blank"
+        rel="noreferrer"
+        title="Want to build similar solutions? Contact aher.dev"
+        className="fixed bottom-4 right-4 z-50 rounded-full border border-[var(--line)] bg-white/95 px-4 py-2 text-xs font-semibold text-[var(--foreground)] shadow-[var(--shadow-card)] backdrop-blur transition hover:border-[var(--accent)] hover:text-[var(--accent-strong)] focus:outline-none focus:ring-4 focus:ring-[var(--accent-ring)] sm:bottom-5 sm:right-5"
+      >
+        Developed by aher.dev
+      </a>
     </main>
   );
 }

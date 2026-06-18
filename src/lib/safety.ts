@@ -25,6 +25,10 @@ const urgentTerms = [
   "new weakness",
   "confusion"
 ];
+
+const highSeverityPattern =
+  /\b(?:[8-9]|10)\s*(?:\/|out of)\s*10\b|\b(?:severe|very bad|intense|unbearable|excruciating)\b/i;
+
 const negationPattern =
   /\b(no|not|never|without|denies|denied|deny|negative for|free of|ruled out|don't have|doesn't have|didn't have)\b[^.?!,;]*$/;
 
@@ -65,6 +69,15 @@ export function detectSafetyFlags(input: string): SafetyFlag[] {
           "Urgent risk language detected. This app cannot assess severity, so discuss this with a qualified clinician promptly."
       });
     }
+  }
+
+  if (highSeverityPattern.test(input)) {
+    flags.push({
+      level: "doctor_discussion",
+      term: "high symptom severity",
+      message:
+        "High symptom severity was mentioned. This app cannot assess urgency, so discuss this with a qualified clinician."
+    });
   }
 
   if (flags.length === 0) {

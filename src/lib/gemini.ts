@@ -48,13 +48,13 @@ export async function runAnalysis(
 ) {
   const model = getModel();
   const localHint = localModel.coverage.sufficient
-    ? `A locally trained Naive Bayes classifier (995-word vocabulary, ~95% test accuracy on the gretelai/symptom_to_diagnosis dataset) read the same notes and predicted:
+    ? `A locally trained TF-IDF multinomial logistic regression classifier (${localModel.coverage.inVocabTokens}/${localModel.coverage.totalTokens} matched grams, ${(localModel.testAccuracy * 100).toFixed(0)}% reported test accuracy) read the same notes and predicted:
 - broad symptom domain: ${localModel.topDomain} (confidence ${(localModel.confidence * 100).toFixed(0)}%)
 - appointment priority: ${localModel.priority} (confidence ${(localModel.priorityConfidence * 100).toFixed(0)}%)
 - vocab coverage: ${localModel.coverage.inVocabTokens}/${localModel.coverage.totalTokens} tokens matched
 
 Treat this as a SECOND OPINION, not ground truth. If the notes clearly disagree with these labels, disregard them and add an entry to "missingInformation" saying "Local classifier suggested <X> but notes do not support that - needs verification". If they agree, you may reference the broad domain in mainConcerns or patterns without medicalising it.`
-    : `A locally trained Naive Bayes classifier ran on the notes but matched too few in-vocab tokens (${localModel.coverage.inVocabTokens} of ${localModel.coverage.totalTokens}) to produce a useful signal. Do not reference any specific domain or priority from it.`;
+    : `A locally trained TF-IDF multinomial logistic regression classifier ran on the notes but matched too few in-vocab tokens (${localModel.coverage.inVocabTokens} of ${localModel.coverage.totalTokens}) to produce a useful signal. Do not reference any specific domain or priority from it.`;
   const prompt = `You are FlareWise, a chronic illness note understanding system for a hackathon prototype.
 
 Return JSON only. Do not diagnose. Do not give treatment advice. Organize only user provided notes.
