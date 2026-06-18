@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import { Activity, AlertTriangle, Cpu, Download, FileText, ShieldCheck, Table2, User } from "lucide-react";
+import { Activity, AlertTriangle, Cpu, Download, FileText, Scale, ShieldCheck, Table2, User } from "lucide-react";
 import { useSavedAnalysis } from "@/components/useSavedAnalysis";
-import type { Demographics } from "@/lib/types";
+import type { AnalysisResult, Demographics, TriageScore } from "@/lib/types";
 
 const emptyDemographics: Demographics = {
   name: "",
@@ -33,23 +33,18 @@ export function ResultsPage() {
 
   function exportBrief() {
     if (!analysis) return;
-    const exportedTriage = analysis.triage ?? {
-      score: analysis.safetyFlags.some((flag) => flag.level !== "routine") ? 70 : 25,
-      level: analysis.safetyFlags.some((flag) => flag.level !== "routine") ? "Priority" : "Routine",
-      timeframe: analysis.safetyFlags.some((flag) => flag.level !== "routine")
-        ? "Same day or next available clinician advice"
-        : "Bring up at the next routine visit",
-      reasons: analysis.safetyFlags.some((flag) => flag.level !== "routine")
-        ? [analysis.safetyFlags.find((flag) => flag.level !== "routine")?.message ?? "Clinician discussion may be needed."]
-        : ["No urgent trigger terms or high severity were detected."]
-    };
+    const exportedTriage = analysis.triage ?? fallbackTriage(analysis.safetyFlags);
 
     const brief = [
       "FlareWise Doctor Visit Brief",
       "",
       "Care priority:",
-      `${exportedTriage.level} (${exportedTriage.score}/100)`,
+      `${exportedTriage.level} (${exportedTriage.score}/100, urgency ${exportedTriage.urgencyLevel}/5)`,
       exportedTriage.timeframe,
+      `Recommended action: ${exportedTriage.action}`,
+      ...(exportedTriage.redFlags.length ? ["", "Red flags:", ...exportedTriage.redFlags.map((item) => `- ${item}`)] : []),
+      "",
+      "Reasons:",
       ...exportedTriage.reasons.map((item) => `- ${item}`),
       "",
       "Main concerns:",
@@ -93,16 +88,9 @@ export function ResultsPage() {
 
   const visibleSafetyFlags = analysis.safetyFlags.filter((flag) => flag.level !== "routine");
   const localModel = analysis.localModel;
-  const triage = analysis.triage ?? {
-    score: visibleSafetyFlags.length ? 70 : 25,
-    level: visibleSafetyFlags.length ? "Priority" : "Routine",
-    timeframe: visibleSafetyFlags.length
-      ? "Same day or next available clinician advice"
-      : "Bring up at the next routine visit",
-    reasons: visibleSafetyFlags.length
-      ? [visibleSafetyFlags[0].message]
-      : ["No urgent trigger terms or high severity were detected."]
-  };
+  const triage = analysis.triage ?? fallbackTriage(analysis.safetyFlags);
+  const agreement = analysis.agreement;
+  const palette = urgencyPalette(triage.urgencyLevel);
   const domainReady =
     localModel &&
     visibleSafetyFlags.length === 0 &&
@@ -169,34 +157,95 @@ export function ResultsPage() {
         </section>
       ) : null}
 
-      <section className="mb-5 rounded-lg border border-[var(--line)] bg-[var(--foreground)] p-5 text-white shadow-sm">
+      <section className={`mb-5 rounded-lg border p-5 text-white shadow-sm ${palette.card}`}>
         <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
           <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-white/10 text-[var(--accent-soft)]">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-white/15 text-white">
               <Activity size={24} />
             </div>
             <div>
-              <div className="text-sm text-white/65">Care priority score</div>
+              <div className="text-sm text-white/75">Care priority</div>
               <h2 className="mt-1 text-3xl font-semibold">{triage.level}</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70">{triage.timeframe}</p>
+              <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-white/90">{triage.action}</p>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-white/70">{triage.timeframe}</p>
             </div>
           </div>
           <div className="lg:text-right">
-            <div className="text-6xl font-semibold">
-              {triage.score}
-              <span className="text-xl text-white/55">/100</span>
+            <div className="flex items-center gap-1.5 lg:justify-end">
+              {[1, 2, 3, 4, 5].map((pip) => (
+                <span
+                  key={pip}
+                  className={`h-2.5 w-7 rounded-full ${pip <= triage.urgencyLevel ? "bg-white" : "bg-white/25"}`}
+                />
+              ))}
             </div>
-            <div className="mt-1 text-xs text-white/55">Rule based from severity, duration, safety flags, and model signal</div>
+            <div className="mt-2 text-sm text-white/80">Urgency {triage.urgencyLevel}/5</div>
+            <div className="mt-3 text-5xl font-semibold">
+              {triage.score}
+              <span className="text-lg text-white/60">/100</span>
+            </div>
           </div>
         </div>
+        {triage.redFlags.length ? (
+          <div className="mt-5 rounded-md bg-black/20 px-4 py-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-white/80">
+              Red-flag rules triggered
+            </div>
+            <ul className="mt-2 grid gap-1 text-sm text-white/90 md:grid-cols-2">
+              {triage.redFlags.map((flag) => (
+                <li key={flag} className="flex items-start gap-2">
+                  <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+                  <span>{flag}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <div className="mt-5 grid gap-2 md:grid-cols-3">
           {triage.reasons.map((reason) => (
-            <div key={reason} className="rounded-md bg-white/10 px-3 py-2 text-sm leading-6 text-white/80">
+            <div key={reason} className="rounded-md bg-white/12 px-3 py-2 text-sm leading-6 text-white/85">
               {reason}
             </div>
           ))}
         </div>
+        <div className="mt-3 text-xs text-white/65">
+          Rule-based safety score from red-flag combinations, severity, duration, safety terms, and the local model signal.
+        </div>
       </section>
+
+      {agreement ? (
+        <section
+          className={`mb-5 rounded-lg border p-5 shadow-sm ${
+            agreement.agree ? "border-[var(--line)] bg-white" : "border-amber-200 bg-amber-50"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Scale size={17} className={agreement.agree ? "text-[var(--accent)]" : "text-amber-700"} />
+            <h2 className="text-base font-semibold">
+              {agreement.agree ? "Rules and model agree" : "Rules and model disagree"}
+            </h2>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-md border border-[var(--line)] bg-[var(--muted)] p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-soft)]">
+                Rule-based triage
+              </div>
+              <div className="mt-1 text-lg font-semibold">{agreement.ruleVerdict}</div>
+              <div className="mt-1 text-xs text-[var(--ink-soft)]">Deterministic safety net</div>
+            </div>
+            <div className="rounded-md border border-[var(--line)] bg-[var(--muted)] p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-soft)]">
+                Local model
+              </div>
+              <div className="mt-1 text-lg font-semibold">{agreement.modelVerdict}</div>
+              <div className="mt-1 text-xs text-[var(--ink-soft)]">
+                Confidence {Math.round(agreement.modelConfidence * 100)}%
+              </div>
+            </div>
+          </div>
+          <p className="mt-3 text-sm leading-6 text-[var(--ink-soft)]">{agreement.note}</p>
+        </section>
+      ) : null}
 
       <div className="grid gap-5 lg:grid-cols-[1.25fr_0.75fr]">
         <section className="rounded-lg border border-[var(--line)] bg-white p-5 shadow-sm">
@@ -343,6 +392,40 @@ export function ResultsPage() {
       </section>
     </div>
   );
+}
+
+function urgencyPalette(level: TriageScore["urgencyLevel"]) {
+  switch (level) {
+    case 5:
+      return { card: "border-red-300 bg-red-600" };
+    case 4:
+      return { card: "border-orange-300 bg-orange-600" };
+    case 3:
+      return { card: "border-amber-300 bg-amber-600" };
+    case 2:
+      return { card: "border-teal-300 bg-teal-700" };
+    default:
+      return { card: "border-emerald-300 bg-emerald-700" };
+  }
+}
+
+function fallbackTriage(safetyFlags: AnalysisResult["safetyFlags"]): TriageScore {
+  const urgent = safetyFlags.some((flag) => flag.level !== "routine");
+  return {
+    score: urgent ? 70 : 25,
+    level: urgent ? "Priority" : "Routine",
+    urgencyLevel: urgent ? 4 : 2,
+    timeframe: urgent
+      ? "Same day or next available clinician advice"
+      : "Bring up at the next routine visit",
+    action: urgent
+      ? "Contact a clinician today or use urgent care."
+      : "Mention this at your next routine visit.",
+    reasons: urgent
+      ? [safetyFlags.find((flag) => flag.level !== "routine")?.message ?? "Clinician discussion may be needed."]
+      : ["No urgent trigger terms or high severity were detected."],
+    redFlags: []
+  };
 }
 
 function MiniMetric({ label, value }: { label: string; value: number }) {

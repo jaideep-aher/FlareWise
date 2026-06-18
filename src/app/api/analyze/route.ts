@@ -4,6 +4,7 @@ import { runAnalysis } from "@/lib/gemini";
 import { classifyWithLocalModel } from "@/lib/localModel";
 import { detectSafetyFlags } from "@/lib/safety";
 import { scoreTriage } from "@/lib/triage";
+import { compareOpinions } from "@/lib/agreement";
 
 const requestSchema = z.object({
   notes: z.string().min(20).max(12000)
@@ -44,8 +45,9 @@ export async function POST(request: Request) {
       safetyFlags,
       localModel
     });
+    const agreement = compareOpinions(triage, localModel);
 
-    return NextResponse.json({ ...result, triage, localModel });
+    return NextResponse.json({ ...result, triage, agreement, localModel });
   } catch (error) {
     return NextResponse.json({ error: providerMessage(error) }, { status: 500 });
   }

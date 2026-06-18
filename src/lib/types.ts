@@ -68,8 +68,19 @@ export type ReliabilityReport = {
 export type TriageScore = {
   score: number;
   level: "Routine" | "Soon" | "Priority" | "Emergency";
+  urgencyLevel: 1 | 2 | 3 | 4 | 5;
   timeframe: string;
+  action: string;
   reasons: string[];
+  redFlags: string[];
+};
+
+export type AgreementReport = {
+  ruleVerdict: string;
+  modelVerdict: string;
+  modelConfidence: number;
+  agree: boolean;
+  note: string;
 };
 
 export type AnalysisResult = {
@@ -79,6 +90,7 @@ export type AnalysisResult = {
   patterns: PatternFinding[];
   reliability: ReliabilityReport;
   triage: TriageScore;
+  agreement?: AgreementReport;
   safetyFlags: SafetyFlag[];
   missingInformation: string[];
   transferLearningNote: string;
