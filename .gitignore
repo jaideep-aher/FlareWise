@@ -22,8 +22,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Local ML model files are hosted on the Hugging Face Hub, not committed
-/models/
+/models/distilbert-symptom-domain/onnx/model.onnx
 .cache/
 *.zip
 FlareWise_PRD_NLP_Hackathon.docx
