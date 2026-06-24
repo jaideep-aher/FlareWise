@@ -1,0 +1,29 @@
+{
+  "examples": [
+    {
+      "text": "I've been having a lot of itching, nausea, and fatigue. I've also been running a fever and losing weight. My pee is black, and I've developed a yellow rash. My stomach hurts, too.",
+      "actual": "metabolic_or_systemic",
+      "predicted": "gastrointestinal_or_urinary"
+    },
+    {
+      "text": "I often feel the need to urinate and have intense urges to do so. I also feel dizzy and confused, and I have lost my sight.",
+      "actual": "metabolic_or_systemic",
+      "predicted": "gastrointestinal_or_urinary"
+    },
+    {
+      "text": "I have a sore throat and a scratchy voice every morning. My throat hurts all the time, and I have bad breath. I also burp a lot.",
+      "actual": "gastrointestinal_or_urinary",
+      "predicted": "respiratory_or_immune"
+    },
+    {
+      "text": "I have itchy, red skin that sometimes flakes. My face and lips puff up, which is really annoying. I also get watery eyes and headaches when the puffing gets bad.",
+      "actual": "respiratory_or_immune",
+      "predicted": "skin_or_medication_reaction"
+    },
+    {
+      "text": "I have been having a lot of problems with my skin. It is constantly peeling and I have developed rashes on my arms. It is really itchy and it is making my life miserable.",
+      "actual": "skin_or_medication_reaction",
+      "predicted": "infection_or_fever"
+    }
+  ]
+}

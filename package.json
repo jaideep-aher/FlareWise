@@ -11,7 +11,8 @@
     "copy:standalone-assets": "mkdir -p .next/standalone/.next && cp -R .next/static .next/standalone/.next/static && cp -R public .next/standalone/public",
     "start": "HOSTNAME=0.0.0.0 node .next/standalone/server.js",
     "lint": "eslint",
-    "train:local-nlp": "node scripts/train-local-nlp.mjs"
+    "train:local-nlp": "node scripts/train-local-nlp.mjs",
+    "evaluate": "node scripts/evaluate-models.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

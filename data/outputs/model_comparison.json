@@ -1,0 +1,143 @@
+{
+  "generatedAt": "2026-06-24T22:52:03.018Z",
+  "testRows": {
+    "domain": 332,
+    "priority": 332
+  },
+  "domain": {
+    "comparison": [
+      {
+        "name": "Majority class (no_clear_domain)",
+        "type": "naive baseline",
+        "accuracy": 0.18072289156626506,
+        "macroF1": 0.03826530612244898
+      },
+      {
+        "name": "Random by prior",
+        "type": "naive baseline",
+        "accuracy": 0.12995683719359333,
+        "macroF1": null
+      },
+      {
+        "name": "TF-IDF logistic regression",
+        "type": "classical",
+        "accuracy": 0.9759036144578314,
+        "macroF1": 0.9744454808420139
+      },
+      {
+        "name": "DistilBERT (fine-tuned, neural)",
+        "type": "neural",
+        "accuracy": 0.995,
+        "macroF1": 0.994
+      }
+    ],
+    "classicalPerClass": {
+      "cardiovascular_or_neurologic": {
+        "precision": 1,
+        "recall": 1,
+        "f1": 1,
+        "support": 38
+      },
+      "gastrointestinal_or_urinary": {
+        "precision": 0.9473684210526315,
+        "recall": 0.9473684210526315,
+        "f1": 0.9473684210526315,
+        "support": 38
+      },
+      "infection_or_fever": {
+        "precision": 0.9782608695652174,
+        "recall": 0.9574468085106383,
+        "f1": 0.967741935483871,
+        "support": 47
+      },
+      "metabolic_or_systemic": {
+        "precision": 1,
+        "recall": 0.92,
+        "f1": 0.9583333333333334,
+        "support": 25
+      },
+      "musculoskeletal": {
+        "precision": 0.9666666666666667,
+        "recall": 1,
+        "f1": 0.983050847457627,
+        "support": 29
+      },
+      "no_clear_domain": {
+        "precision": 0.9836065573770492,
+        "recall": 1,
+        "f1": 0.9917355371900827,
+        "support": 60
+      },
+      "respiratory_or_immune": {
+        "precision": 0.9795918367346939,
+        "recall": 0.9795918367346939,
+        "f1": 0.9795918367346939,
+        "support": 49
+      },
+      "skin_or_medication_reaction": {
+        "precision": 0.9574468085106383,
+        "recall": 0.9782608695652174,
+        "f1": 0.967741935483871,
+        "support": 46
+      }
+    },
+    "majorityClassLabel": "no_clear_domain",
+    "randomBaseline": {
+      "uniform": 0.125,
+      "priorWeighted": 0.12995683719359333
+    },
+    "distilbert": {
+      "name": "DistilBERT (fine-tuned, neural)",
+      "source": "notebooks/finetune_distilbert.ipynb held-out split",
+      "accuracy": 0.995,
+      "macroF1": 0.994
+    }
+  },
+  "priority": {
+    "comparison": [
+      {
+        "name": "Majority class (routine_tracking)",
+        "type": "naive baseline",
+        "accuracy": 0.5903614457831325,
+        "macroF1": 0.2474747474747475
+      },
+      {
+        "name": "Random by prior",
+        "type": "naive baseline",
+        "accuracy": 0.4284134703338634,
+        "macroF1": null
+      },
+      {
+        "name": "TF-IDF logistic regression",
+        "type": "classical",
+        "accuracy": 0.927710843373494,
+        "macroF1": 0.9069425178570568
+      }
+    ],
+    "classicalPerClass": {
+      "clinician_discussion": {
+        "precision": 0.9111111111111111,
+        "recall": 0.803921568627451,
+        "f1": 0.8541666666666666,
+        "support": 51
+      },
+      "priority_review": {
+        "precision": 0.8804347826086957,
+        "recall": 0.9529411764705882,
+        "f1": 0.9152542372881357,
+        "support": 85
+      },
+      "routine_tracking": {
+        "precision": 0.9538461538461539,
+        "recall": 0.9489795918367347,
+        "f1": 0.9514066496163682,
+        "support": 196
+      }
+    },
+    "majorityClassLabel": "routine_tracking",
+    "randomBaseline": {
+      "uniform": 0.3333333333333333,
+      "priorWeighted": 0.4284134703338634
+    }
+  }
+}
