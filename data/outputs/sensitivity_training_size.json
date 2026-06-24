@@ -1,0 +1,39 @@
+{
+  "points": [
+    {
+      "fraction": 0.1,
+      "trainRows": 599,
+      "accuracy": 0.9382530120481928,
+      "macroF1": 0.9304311799047618,
+      "seeds": 2
+    },
+    {
+      "fraction": 0.25,
+      "trainRows": 1498,
+      "accuracy": 0.9668674698795181,
+      "macroF1": 0.9633113022936051,
+      "seeds": 2
+    },
+    {
+      "fraction": 0.5,
+      "trainRows": 2997,
+      "accuracy": 0.9728915662650602,
+      "macroF1": 0.9708191558588641,
+      "seeds": 2
+    },
+    {
+      "fraction": 0.75,
+      "trainRows": 4495,
+      "accuracy": 0.9743975903614458,
+      "macroF1": 0.9710085626451815,
+      "seeds": 2
+    },
+    {
+      "fraction": 1,
+      "trainRows": 5993,
+      "accuracy": 0.9759036144578314,
+      "macroF1": 0.9737877780454912,
+      "seeds": 2
+    }
+  ]
+}

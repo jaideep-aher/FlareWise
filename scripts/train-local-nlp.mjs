@@ -1,6 +1,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 const datasetUrl =
   "https://datasets-server.huggingface.co/rows?dataset=gretelai%2Fsymptom_to_diagnosis&config=default";
 
@@ -294,7 +295,7 @@ function softmax(scores) {
   return exps.map((e) => e / total);
 }
 
-function trainLR(rows, vocab, idf, labels, opts = {}) {
+export function trainLR(rows, vocab, idf, labels, opts = {}) {
   const { epochs = 40, lr = 0.5, l2 = 1e-4 } = opts;
   const vocabSet = new Set(vocab);
   const labelIndex = Object.fromEntries(labels.map((l, i) => [l, i]));
@@ -360,7 +361,7 @@ function trainLR(rows, vocab, idf, labels, opts = {}) {
   return { weights, bias, labels };
 }
 
-function predict(model, text, vocabSet, idf) {
+export function predict(model, text, vocabSet, idf) {
   const features = tfidfVector(text, vocabSet, idf);
   const scores = model.labels.map((_, c) => {
     let s = model.bias[c];
@@ -377,7 +378,7 @@ function predict(model, text, vocabSet, idf) {
     .sort((a, b) => b.probability - a.probability);
 }
 
-function evaluate(model, rows, vocabSet, idf) {
+export function evaluate(model, rows, vocabSet, idf) {
   let correct = 0;
   const byLabel = {};
   for (const row of rows) {
@@ -454,72 +455,54 @@ function buildIntakeTestSet() {
   ];
   return cases.map((c) => ({ input: c.text, label: c.label, rawLabel: "intake_eval" }));
 }
-console.error("fetching dataset...");
-const trainRowsRaw = await fetchRows("train");
-const testRowsRaw = await fetchRows("test");
-console.error(`train=${trainRowsRaw.length}  test=${testRowsRaw.length}`);
+export async function buildDatasets() {
+  console.error("fetching dataset...");
+  const trainRowsRaw = await fetchRows("train");
+  const testRowsRaw = await fetchRows("test");
+  console.error(`train=${trainRowsRaw.length}  test=${testRowsRaw.length}`);
 
-const META_TRAIN = synthesizeMeta(220);
-const META_TEST = synthesizeMeta(60);
-const MULTI_TRAIN = synthesizeMultiSymptom(trainRowsRaw, 300);
-const MULTI_TEST = synthesizeMultiSymptom(testRowsRaw, 60);
-const ANCHORS = synthesizeAnchors();
-const domainTrain = expandRows([
-  ...trainRowsRaw,
-  ...MULTI_TRAIN,
-  ...META_TRAIN,
-  ...ANCHORS,
-  ...ANCHORS,
-  ...ANCHORS
-]);
-const domainTest = [...testRowsRaw, ...MULTI_TEST, ...META_TEST];
-const intakeEval = buildIntakeTestSet();
+  const META_TRAIN = synthesizeMeta(220);
+  const META_TEST = synthesizeMeta(60);
+  const MULTI_TRAIN = synthesizeMultiSymptom(trainRowsRaw, 300);
+  const MULTI_TEST = synthesizeMultiSymptom(testRowsRaw, 60);
+  const ANCHORS = synthesizeAnchors();
+  const domainTrain = expandRows([
+    ...trainRowsRaw,
+    ...MULTI_TRAIN,
+    ...META_TRAIN,
+    ...ANCHORS,
+    ...ANCHORS,
+    ...ANCHORS
+  ]);
+  const domainTest = [...testRowsRaw, ...MULTI_TEST, ...META_TEST];
+  const intakeEval = buildIntakeTestSet();
 
-console.error(
-  `domain train=${domainTrain.length}  test=${domainTest.length}  intake_eval=${intakeEval.length}`
-);
+  console.error(
+    `domain train=${domainTrain.length}  test=${domainTest.length}  intake_eval=${intakeEval.length}`
+  );
 
-console.error("building vocab...");
-const { vocab, idf } = buildVocab(domainTrain, 2);
-console.error(`vocab size=${vocab.length}`);
+  console.error("building vocab...");
+  const { vocab, idf } = buildVocab(domainTrain, 2);
+  console.error(`vocab size=${vocab.length}`);
 
-const domainLabels = [...new Set(domainTrain.map((r) => r.label))].sort();
+  const domainLabels = [...new Set(domainTrain.map((r) => r.label))].sort();
 
-console.error("training domain classifier...");
-const domainModel = trainLR(domainTrain, vocab, idf, domainLabels, {
-  epochs: 35,
-  lr: 0.6,
-  l2: 5e-5
-});
+  const priorityTrain = domainTrain.map((row) => ({ ...row, label: priorityLabel(row) }));
+  const priorityTest = domainTest.map((row) => ({ ...row, label: priorityLabel(row) }));
+  const priorityLabels = [...new Set(priorityTrain.map((r) => r.label))].sort();
 
-const vocabSet = new Set(vocab);
-const domainTrainMetrics = evaluate(domainModel, domainTrain, vocabSet, idf);
-const domainTestMetrics = evaluate(domainModel, domainTest, vocabSet, idf);
-const domainIntakeMetrics = evaluate(domainModel, intakeEval, vocabSet, idf);
-
-console.error(
-  `domain  train=${(domainTrainMetrics.accuracy * 100).toFixed(1)}%  test=${(
-    domainTestMetrics.accuracy * 100
-  ).toFixed(1)}%  intake_eval=${(domainIntakeMetrics.accuracy * 100).toFixed(1)}%`
-);
-
-const priorityTrain = domainTrain.map((row) => ({ ...row, label: priorityLabel(row) }));
-const priorityTest = domainTest.map((row) => ({ ...row, label: priorityLabel(row) }));
-const priorityLabels = [...new Set(priorityTrain.map((r) => r.label))].sort();
-
-console.error("training priority classifier...");
-const priorityModel = trainLR(priorityTrain, vocab, idf, priorityLabels, {
-  epochs: 30,
-  lr: 0.5,
-  l2: 5e-5
-});
-const priorityTrainMetrics = evaluate(priorityModel, priorityTrain, vocabSet, idf);
-const priorityTestMetrics = evaluate(priorityModel, priorityTest, vocabSet, idf);
-console.error(
-  `priority train=${(priorityTrainMetrics.accuracy * 100).toFixed(1)}%  test=${(
-    priorityTestMetrics.accuracy * 100
-  ).toFixed(1)}%`
-);
+  return {
+    domainTrain,
+    domainTest,
+    intakeEval,
+    vocab,
+    idf,
+    domainLabels,
+    priorityTrain,
+    priorityTest,
+    priorityLabels
+  };
+}
 
 function serialiseModel(m, metrics) {
   return {
@@ -530,54 +513,104 @@ function serialiseModel(m, metrics) {
   };
 }
 
-const artifact = {
-  name: "flarewise-tfidf-logreg",
-  modelType: "tfidf_multinomial_logistic_regression",
-  sourceDataset:
-    "gretelai/symptom_to_diagnosis + synthetic intake-meta and multi-symptom examples",
-  sourceUrl: "https://huggingface.co/datasets/gretelai/symptom_to_diagnosis",
-  trainedAt: new Date().toISOString(),
-  vocabulary: vocab,
-  idf,
-  models: {
-    domain: {
-      task: "symptom sentence to broad clinical domain (with no_clear_domain class)",
-      ...serialiseModel(domainModel, {
-        train: domainTrainMetrics,
-        test: domainTestMetrics,
-        intake: domainIntakeMetrics
-      })
-    },
-    priority: {
-      task: "symptom sentence to appointment priority",
-      ...serialiseModel(priorityModel, {
-        train: priorityTrainMetrics,
-        test: priorityTestMetrics
-      })
+async function main() {
+  const {
+    domainTrain,
+    domainTest,
+    intakeEval,
+    vocab,
+    idf,
+    domainLabels,
+    priorityTrain,
+    priorityTest,
+    priorityLabels
+  } = await buildDatasets();
+
+  console.error("training domain classifier...");
+  const domainModel = trainLR(domainTrain, vocab, idf, domainLabels, {
+    epochs: 35,
+    lr: 0.6,
+    l2: 5e-5
+  });
+
+  const vocabSet = new Set(vocab);
+  const domainTrainMetrics = evaluate(domainModel, domainTrain, vocabSet, idf);
+  const domainTestMetrics = evaluate(domainModel, domainTest, vocabSet, idf);
+  const domainIntakeMetrics = evaluate(domainModel, intakeEval, vocabSet, idf);
+
+  console.error(
+    `domain  train=${(domainTrainMetrics.accuracy * 100).toFixed(1)}%  test=${(
+      domainTestMetrics.accuracy * 100
+    ).toFixed(1)}%  intake_eval=${(domainIntakeMetrics.accuracy * 100).toFixed(1)}%`
+  );
+
+  console.error("training priority classifier...");
+  const priorityModel = trainLR(priorityTrain, vocab, idf, priorityLabels, {
+    epochs: 30,
+    lr: 0.5,
+    l2: 5e-5
+  });
+  const priorityTrainMetrics = evaluate(priorityModel, priorityTrain, vocabSet, idf);
+  const priorityTestMetrics = evaluate(priorityModel, priorityTest, vocabSet, idf);
+  console.error(
+    `priority train=${(priorityTrainMetrics.accuracy * 100).toFixed(1)}%  test=${(
+      priorityTestMetrics.accuracy * 100
+    ).toFixed(1)}%`
+  );
+
+  const artifact = {
+    name: "flarewise-tfidf-logreg",
+    modelType: "tfidf_multinomial_logistic_regression",
+    sourceDataset:
+      "gretelai/symptom_to_diagnosis + synthetic intake-meta and multi-symptom examples",
+    sourceUrl: "https://huggingface.co/datasets/gretelai/symptom_to_diagnosis",
+    trainedAt: new Date().toISOString(),
+    vocabulary: vocab,
+    idf,
+    models: {
+      domain: {
+        task: "symptom sentence to broad clinical domain (with no_clear_domain class)",
+        ...serialiseModel(domainModel, {
+          train: domainTrainMetrics,
+          test: domainTestMetrics,
+          intake: domainIntakeMetrics
+        })
+      },
+      priority: {
+        task: "symptom sentence to appointment priority",
+        ...serialiseModel(priorityModel, {
+          train: priorityTrainMetrics,
+          test: priorityTestMetrics
+        })
+      }
     }
-  }
-};
+  };
 
-const outputPath = path.join(process.cwd(), "src/lib/ml/model.json");
-await fs.mkdir(path.dirname(outputPath), { recursive: true });
-await fs.writeFile(outputPath, JSON.stringify(artifact));
-const stat = await fs.stat(outputPath);
+  const outputPath = path.join(process.cwd(), "src/lib/ml/model.json");
+  await fs.mkdir(path.dirname(outputPath), { recursive: true });
+  await fs.writeFile(outputPath, JSON.stringify(artifact));
+  const stat = await fs.stat(outputPath);
 
-console.log(
-  JSON.stringify(
-    {
-      modelType: artifact.modelType,
-      vocabSize: vocab.length,
-      domainTrainRows: domainTrain.length,
-      domainTestRows: domainTest.length,
-      intakeEvalRows: intakeEval.length,
-      domainTestAcc: domainTestMetrics.accuracy,
-      domainIntakeAcc: domainIntakeMetrics.accuracy,
-      priorityTestAcc: priorityTestMetrics.accuracy,
-      domainPerLabelIntake: domainIntakeMetrics.byLabel,
-      modelJsonKB: Math.round(stat.size / 1024)
-    },
-    null,
-    2
-  )
-);
+  console.log(
+    JSON.stringify(
+      {
+        modelType: artifact.modelType,
+        vocabSize: vocab.length,
+        domainTrainRows: domainTrain.length,
+        domainTestRows: domainTest.length,
+        intakeEvalRows: intakeEval.length,
+        domainTestAcc: domainTestMetrics.accuracy,
+        domainIntakeAcc: domainIntakeMetrics.accuracy,
+        priorityTestAcc: priorityTestMetrics.accuracy,
+        domainPerLabelIntake: domainIntakeMetrics.byLabel,
+        modelJsonKB: Math.round(stat.size / 1024)
+      },
+      null,
+      2
+    )
+  );
+}
+
+const invokedDirectly =
+  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (invokedDirectly) await main();
